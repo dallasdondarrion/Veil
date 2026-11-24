@@ -125,18 +125,18 @@ class Simkl(context: Context) : Tracker {
     }
 
     private fun item(o: JSONObject, isMovie: Boolean): WatchItem {
-        val ids = o.obj("ids")
-        return WatchItem(
-            isMovie = isMovie,
-            title = o.str("title") ?: "Untitled",
-            traktId = null,
-            imdb = ids?.str("imdb"),
-            tmdb = ids?.str("tmdb")?.toIntOrNull(),
-            tvdb = ids?.str("tvdb")?.toIntOrNull(),
-            serviceId = ids?.str("simkl"),
-            runtime = o.int("runtime"),
-        )
-    }
+    val ids = o.obj("ids")
+    return WatchItem(
+        isMovie = isMovie,
+        title = o.str("title") ?: "Untitled",
+        traktId = null,
+        imdb = ids?.str("imdb"),
+        tmdb = ids?.str("tmdb")?.toIntOrNull(),
+        tvdb = ids?.str("tvdb")?.toIntOrNull(),
+        serviceId = ids?.str("simkl"),
+        runtime = o.int("runtime"),
+    )
+}
 
     /** Simkl ids for a write: its own number when known, else IMDb/TMDB. */
     private fun ids(item: WatchItem) = JSONObject().apply {

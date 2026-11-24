@@ -3,7 +3,11 @@ package dev.veil.launcher
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
+import android.media.tv.TvContract
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +25,7 @@ import dev.veil.launcher.data.Simkl
 import dev.veil.launcher.data.Tracker
 import dev.veil.launcher.data.NextDnsStats
 import dev.veil.launcher.data.NowPlaying
+import dev.veil.launcher.data.NuvioWatchNext
 import dev.veil.launcher.data.PrivateDns
 import dev.veil.launcher.data.Weather
 import dev.veil.launcher.data.Tmdb
@@ -169,6 +174,9 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
         private set
 
     private var lastLoad = 0L
+    private var lastNativeLoad = 0L
+    private var watchLoadJob: Job? = null
+    private var watchRequest = 0L
     private var connectJob: Job? = null
 
     val pinnedApps: List<AppEntry>
@@ -214,38 +222,137 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
         homeTick++
     }
 
-    fun refreshApps() {
+    private var lastAppsLoad = 0L
+    fun refreshApps(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastAppsLoad < 60_000) return
+        lastAppsLoad = now
         scope.launch {
-            apps = withContext(Dispatchers.IO) { runCatching { Apps.load(context) }.getOrDefault(apps) }
+            val loaded = withContext(Dispatchers.IO) { runCatching { Apps.load(context) }.getOrNull() } ?: return@launch
+            if (loaded != apps) apps = loaded
         }
     }
 
+    private val watchHandler = Handler(Looper.getMainLooper())
+    private val watchNextRefresh = Runnable { if (player == Player.NUVIO_IPTV) refreshWatching(force = true) }
+    private val watchNextObserver = object : ContentObserver(watchHandler) {
+        override fun onChange(selfChange: Boolean) {
+            // Nuvio updates its row several times in a burst; wait for it to settle.
+            watchHandler.removeCallbacks(watchNextRefresh)
+            watchHandler.postDelayed(watchNextRefresh, 800)
+        }
+    }
+    private var watchingNextChanges = false
+
+    /** Refreshes the Nuvio + IPTV row as soon as that app updates its Android TV Watch Next entries. */
+    fun startWatchNextUpdates() {
+        if (watchingNextChanges) return
+        watchingNextChanges = runCatching {
+            context.contentResolver.registerContentObserver(TvContract.WatchNextPrograms.CONTENT_URI, true, watchNextObserver)
+            true
+        }.getOrDefault(false)
+    }
+
+    fun stopWatchNextUpdates() {
+        if (!watchingNextChanges) return
+        watchHandler.removeCallbacks(watchNextRefresh)
+        runCatching { context.contentResolver.unregisterContentObserver(watchNextObserver) }
+        watchingNextChanges = false
+    }
+
     fun refreshWatching(force: Boolean = false) {
-        connected = tracker.isConnected
-        if (!connected || loading) return
-        val now = System.currentTimeMillis()
-        if (!force && now - lastLoad < 30_000) return
-        lastLoad = now
-        scope.launch {
+    connected = tracker.isConnected
+    val selected = player
+    val now = System.currentTimeMillis()
+
+    if (selected == Player.NUVIO_IPTV) {
+        if (!force && now - lastNativeLoad < 60_000) return
+        if (!isInstalled(selected)) {
+            items = emptyList(); VeilCache.items = emptyList()
+            error = "Nuvio + IPTV isn't installed"
+            loading = false
+            return
+        }
+        lastNativeLoad = now
+        val request = ++watchRequest
+        watchLoadJob?.cancel()
+        watchLoadJob = scope.launch {
             loading = true
             try {
-                val source = tracker
-                val result = withContext(Dispatchers.IO) { ContinueWatching.withArt(source.continueWatching(force), tmdb) }
-                if (source !== tracker) return@launch // switched service while loading
-                items = result
-                VeilCache.items = result
-                val keep = result.firstOrNull { it.key == focused?.key }
-                focused = keep ?: result.firstOrNull()
-                focusedIndex = if (keep != null) result.indexOf(keep) else 0
-                error = null
-            } catch (e: Exception) {
-                error = "Couldn't reach ${service.title}"
+                val result = withContext(Dispatchers.IO) {
+                    val loaded = NuvioWatchNext.load(context, NUVIO_IPTV_PKG)
+
+                    val enriched = loaded.items.map { item ->
+                        val id = tmdb.search(item.isMovie, item.title)
+                        val art = id?.let { tmdb.art(item.isMovie, it) }
+
+                        item.copy(
+                            tmdb = id ?: item.tmdb,
+                            backdrop = art?.backdrop ?: item.backdrop,
+                            thumb = item.thumb ?: art?.thumb,
+                            logo = item.logo ?: art?.logo,
+                            poster = item.poster ?: art?.poster,
+                            runtime = item.runtime?.takeIf { it > 0 }
+                                ?: (if (!item.isMovie && item.season > 0 && item.episode > 0 && (id ?: item.tmdb) != null)
+                                    tmdb.episodeRuntime((id ?: item.tmdb)!!, item.season, item.episode)
+                                else null)?.takeIf { it > 0 }
+                                ?: art?.runtime?.takeIf { it > 0 }
+                        )
+                    }
+
+                    loaded.copy(items = enriched)
+                }
+
+                if (request != watchRequest || player != selected) return@launch
+
+                items = result.items
+                VeilCache.items = result.items
+                val keep = result.items.firstOrNull { it.key == focused?.key }
+                focused = keep ?: result.items.firstOrNull()
+                focusedIndex = if (keep != null) result.items.indexOf(keep) else 0
+                error = result.error
             } finally {
+                if (request == watchRequest) loading = false
+            }
+        }
+        return
+    }
+
+    if (!connected) {
+        watchLoadJob?.cancel(); ++watchRequest
+        items = emptyList(); VeilCache.items = emptyList()
+        focused = null; focusedIndex = 0
+        loading = false; error = null
+        return
+    }
+    if (!force && now - lastLoad < 60_000) return
+    lastLoad = now
+    val request = ++watchRequest
+    watchLoadJob?.cancel()
+    watchLoadJob = scope.launch {
+        loading = true
+        try {
+            val source = tracker
+            val result = withContext(Dispatchers.IO) {
+                ContinueWatching.withArt(source.continueWatching(force), tmdb)
+            }
+            if (request != watchRequest || source !== tracker || player != selected) return@launch
+            items = result
+            VeilCache.items = result
+            val keep = result.firstOrNull { it.key == focused?.key }
+            focused = keep ?: result.firstOrNull()
+            focusedIndex = if (keep != null) result.indexOf(keep) else 0
+            error = null
+        } catch (e: Exception) {
+            if (request == watchRequest) error = "Couldn't reach ${service.title}"
+        } finally {
+            if (request == watchRequest) {
                 loading = false
                 connected = tracker.isConnected
             }
         }
     }
+}
 
     // ---- Ad blocking, counter, weather ----------------------------------------------------------
 
@@ -393,10 +500,16 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     private fun label(item: WatchItem) = if (item.isMovie) item.title else "${item.title} S${item.season} E${item.episode}"
 
     /** Adds it to your watch history on the tracker; the row then moves on to the next episode. */
-    fun markWatched(item: WatchItem) = trackerAction(item, "Marked ${label(item)} as watched") { tracker.markWatched(item) }
+    fun markWatched(item: WatchItem) {
+        if (item.isNativeWatchNext) return
+        trackerAction(item, "Marked ${label(item)} as watched") { tracker.markWatched(item) }
+    }
 
     /** Clears progress on the tracker and takes the show out of its Up Next. */
-    fun removeFromRow(item: WatchItem) = trackerAction(item, "Removed ${item.title} from Continue Watching") { tracker.removeFromProgress(item) }
+    fun removeFromRow(item: WatchItem) {
+        if (item.isNativeWatchNext) return
+        trackerAction(item, "Removed ${item.title} from Continue Watching") { tracker.removeFromProgress(item) }
+    }
 
     private fun trackerAction(item: WatchItem, done: String, call: () -> Boolean) {
         items = items.filterNot { it.key == item.key }          // instant feedback
@@ -714,13 +827,13 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     // ---- Which app plays Continue Watching (chosen once in the Veil menu) ----
 
-    /** Apps that can open the exact episode/movie from an IMDb id. */
     enum class Player(val id: String, val title: String, val pkg: String) {
-        NUVIO("nuvio", "Nuvio", NUVIO_PKG),
-        STREMIO("stremio", "Stremio", STREMIO_PKG),
+        NUVIO_IPTV("nuvio", "Nuvio + IPTV", NUVIO_IPTV_PKG),
+        NUVIO_LEGACY("nuvio_legacy", "Nuvio Legacy", NUVIO_LEGACY_PKG),
     }
 
-    var player by mutableStateOf(Player.entries.firstOrNull { it.id == prefs.getString("player", null) } ?: Player.NUVIO)
+    // The old "nuvio" preference intentionally maps to Nuvio + IPTV for existing installs.
+    var player by mutableStateOf(Player.entries.firstOrNull { it.id == prefs.getString("player", null) } ?: Player.NUVIO_IPTV)
         private set
 
     fun isInstalled(p: Player): Boolean =
@@ -728,39 +841,42 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     fun choosePlayer(p: Player) {
         if (!isInstalled(p)) { dev.veil.launcher.ui.Sfx.error(); showToast("${p.title} isn't installed on this TV"); return }
+        if (player == p) return
         player = p
         prefs.edit().putString("player", p.id).apply()
+        lastLoad = 0L; lastNativeLoad = 0L
+        items = emptyList(); VeilCache.items = emptyList()
+        focused = null; focusedIndex = 0; error = null
+        refreshWatching(force = true)
     }
 
-    /** The chosen player, or another supported one if it was uninstalled. */
     private fun effectivePlayer(): Player =
         if (isInstalled(player)) player else Player.entries.firstOrNull { isInstalled(it) } ?: player
 
-    /** Opens the item in the chosen player, straight to its streams. */
     fun open(item: WatchItem) {
-        if (effectivePlayer() == Player.STREMIO) openInStremio(item) else openInNuvio(item)
-    }
-
-    /** stremio:///detail/{type}/{imdb}/{videoId}: the episode's (or movie's) stream list. */
-    private fun openInStremio(item: WatchItem) {
-        val imdb = item.imdb
-        val uri = when {
-            imdb == null -> null
-            item.isMovie -> "stremio:///detail/movie/$imdb/$imdb"
-            else -> "stremio:///detail/series/$imdb/$imdb:${item.season}:${item.episode}"
-        }
-        val i = uri?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)).setPackage(STREMIO_PKG).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-        if (i == null || !start(i)) {
-            context.packageManager.getLeanbackLaunchIntentForPackage(STREMIO_PKG)?.let {
-                start(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+        val selected = effectivePlayer()
+        if (item.isNativeWatchNext && selected == Player.NUVIO_IPTV && openNativeIntent(item)) return
+        when (selected) {
+            Player.NUVIO_IPTV -> openInNuvioIptv(item)
+            Player.NUVIO_LEGACY -> openInNuvioLegacy(item)
         }
     }
 
-    /** Opens the item straight into Nuvio's stream picker, the same way Nuvio's own Watch Next cards do. */
-    private fun openInNuvio(item: WatchItem) {
-        val i = Intent(Intent.ACTION_MAIN)
-            .setClassName(NUVIO, "$NUVIO.MainActivity")
+    private fun openNativeIntent(item: WatchItem): Boolean {
+        val raw = item.nativeIntentUri ?: return false
+        val intent = runCatching { Intent.parseUri(raw, Intent.URI_INTENT_SCHEME) }.getOrNull()
+            ?: runCatching { Intent(Intent.ACTION_VIEW, Uri.parse(raw)) }.getOrNull()
+            ?: return false
+        if (intent.`package` == null && intent.component == null) {
+            item.nativePackage?.let { intent.setPackage(it) }
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return start(intent)
+    }
+
+    /** Nuvio + IPTV accepts the same activity extras used by its Watch Next cards. */
+    private fun openInNuvioIptv(item: WatchItem) {
+        val i = Intent(Intent.ACTION_MAIN).setClassName(NUVIO_IPTV_PKG, NUVIO_ACTIVITY)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val imdb = item.imdb
         if (imdb != null) {
@@ -770,16 +886,29 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
             i.putExtra("videoId", if (item.isMovie) imdb else "$imdb:${item.season}:${item.episode}")
             i.putExtra("name", item.title)
             if (!item.isMovie) {
-                i.putExtra("season", item.season)
-                i.putExtra("episode", item.episode)
+                i.putExtra("season", item.season); i.putExtra("episode", item.episode)
                 item.episodeTitle?.let { i.putExtra("episodeTitle", it) }
             }
             item.poster?.let { i.putExtra("poster", it) }
             item.thumb?.let { i.putExtra("backdrop", it) }
             item.logo?.let { i.putExtra("logo", it) }
         }
-        if (!start(i)) {
-            context.packageManager.getLeanbackLaunchIntentForPackage(NUVIO)?.let {
+        if (!start(i)) context.packageManager.getLeanbackLaunchIntentForPackage(NUVIO_IPTV_PKG)?.let {
+            start(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** Nuvio Legacy's documented external deep-link interface. */
+    private fun openInNuvioLegacy(item: WatchItem) {
+        val id = item.imdb ?: item.tmdb?.let { "tmdb:$it" }
+        val uri = id?.let {
+            if (item.isMovie) "nuvio-legacy://play/movie/$it"
+            else "nuvio-legacy://play/series/$it/${item.season}/${item.episode}"
+        }
+        val intent = uri?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)).setPackage(NUVIO_LEGACY_PKG)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        if (intent == null || !start(intent)) {
+            context.packageManager.getLeanbackLaunchIntentForPackage(NUVIO_LEGACY_PKG)?.let {
                 start(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
@@ -794,12 +923,12 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     }
 
     companion object {
-        const val NUVIO = "com.nuvio.tv"
-        const val NUVIO_PKG = NUVIO
-        const val STREMIO_PKG = "com.stremio.one"
+        const val NUVIO_IPTV_PKG = "com.nuvio.livetv"
+        const val NUVIO_LEGACY_PKG = "space.nuvio.nativelegacy"
+        const val NUVIO_ACTIVITY = "com.nuvio.tv.MainActivity"
         val DEFAULT_PINS = listOf(
             "io.gh.reisxd.tizentube.cobalt",
-            NUVIO,
+            NUVIO_IPTV_PKG,
             "com.spotify.tv.android",
         )
     }

@@ -1,5 +1,7 @@
 package dev.veil.launcher.data
 
+import dev.veil.launcher.BuildConfig
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -389,7 +391,7 @@ class AudioTap(private val context: Context) {
         bassRel = (1f + 0.45f * (bassEnergy - 1f) + 0.9f * kickEnv).coerceIn(0f, 4f)
 
         if (now - stAt > 5_000) {
-            if (stAt != 0L) android.util.Log.d(
+            if (BuildConfig.DEBUG && stAt != 0L) android.util.Log.d(
                 "VeilAudio",
                 "bpm=${"%.1f".format(bpm)} conf=${"%.2f".format(confidence)} hits=$stHits onBeat=$stMatched " +
                     "offBeat=${stHits - stMatched} shownAhead=$stPredicted hitErr=${if (stMatched > 0) stErr / stMatched else 0}ms " +

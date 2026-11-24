@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Visualizer: reads the TV's audio OUTPUT levels (no microphone, nothing recorded). Granted over ADB. -->
@@ -28,8 +30,8 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
-        <package android:name="com.nuvio.tv" />
-        <package android:name="com.stremio.one" />
+        <package android:name="com.nuvio.livetv" />
+        <package android:name="space.nuvio.nativelegacy" />
     </queries>
 
     <application

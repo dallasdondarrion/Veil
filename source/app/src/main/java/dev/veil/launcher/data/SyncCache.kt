@@ -1,5 +1,7 @@
 package dev.veil.launcher.data
 
+import dev.veil.launcher.BuildConfig
+
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray
@@ -29,7 +31,13 @@ internal class SyncCache(context: Context, private val name: String) {
         val all = force || prefs.getBoolean("force", false)
         val haveAll = parts.all { prefs.contains(it.key) }
         if (!all && haveAll && now - prefs.getLong("checked", 0) < CHECK_EVERY) return
-        val a = activities()
+        val a = runCatching { activities() }.getOrElse { error ->
+            if (haveAll) {
+                Log.w("VeilSync", "$name: activity check failed; using cached results", error)
+                return
+            }
+            throw error
+        }
         for (p in parts) {
             val stamp = p.stamp(a)
             val reason = when {
@@ -39,9 +47,14 @@ internal class SyncCache(context: Context, private val name: String) {
                 now - prefs.getLong("${p.key}_at", 0) > p.maxAge -> "max age"
                 else -> null
             } ?: continue
-            val body = p.fetch()
+            val fetched = runCatching { p.fetch() }
+            if (fetched.isFailure) {
+                Log.w("VeilSync", "$name: ${p.key} refresh failed; keeping cached results", fetched.exceptionOrNull())
+                continue
+            }
+            val body = fetched.getOrThrow()
             prefs.edit().putString(p.key, body).putString("${p.key}_stamp", stamp).putLong("${p.key}_at", now).apply()
-            Log.i("VeilSync", "$name: fetched ${p.key} ($reason)")
+            if (BuildConfig.DEBUG) Log.d("VeilSync", "$name: fetched ${p.key} ($reason)")
         }
         prefs.edit().putLong("checked", now).putBoolean("force", false).apply()
     }

@@ -1,11 +1,18 @@
 package dev.veil.launcher.data
 
+import java.net.URLEncoder
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
 /** Looks up artwork (backdrop, title logo, poster) from TMDB, cached in memory. */
 class Tmdb(private val key: String) {
-    data class Art(val backdrop: String?, val thumb: String?, val logo: String?, val poster: String?)
+    data class Art(
+    val backdrop: String?,
+    val thumb: String?,
+    val logo: String?,
+    val poster: String?,
+    val runtime: Int?
+)
 
     private val cache = ConcurrentHashMap<String, Art>()
     val enabled: Boolean get() = key.isNotBlank()
@@ -39,6 +46,16 @@ class Tmdb(private val key: String) {
                 if (logo != null) break
             }
         }
+val runtime = if (isMovie) {
+            j.optInt("runtime", 0).takeIf { it > 0 }
+        } else {
+            j.optJSONArray("episode_run_time")
+                ?.let { episodes ->
+                    (0 until episodes.length())
+                        .map { episodes.optInt(it) }
+                        .firstOrNull { it > 0 }
+                }
+        }
         val art = Art(
             // "original" is typically 3840x2160; Coil decodes it at the hero's size, so it stays sharp when the
             // 1080p UI is scaled up to the 4K panel.
@@ -46,10 +63,35 @@ class Tmdb(private val key: String) {
             thumb = j.str("backdrop_path")?.let { "$IMG/w780$it" },
             logo = logo?.let { "$IMG/original$it" }, // small PNGs; sharp on the 4K panel
             poster = j.str("poster_path")?.let { "$IMG/w342$it" },
+            runtime = runtime
         )
         cache["$type:$id"] = art
         return art
     }
+private val episodeRuntimeCache = ConcurrentHashMap<String, Int>()
+
+fun episodeRuntime(tvId: Int, season: Int, episode: Int): Int? {
+    if (!enabled || season <= 0 || episode <= 0) return null
+
+    val cacheKey = "$tvId:$season:$episode"
+    episodeRuntimeCache[cacheKey]?.let { return it }
+
+    val v4 = key.startsWith("eyJ")
+    val url = "https://api.themoviedb.org/3/tv/$tvId/season/$season/episode/$episode" +
+        (if (v4) "" else "?api_key=$key")
+    val headers = if (v4) mapOf("Authorization" to "Bearer $key") else emptyMap()
+
+    val (code, response) =
+        runCatching { Http.call("GET", url, headers) }.getOrNull() ?: return null
+
+    if (code != 200) return null
+
+    val runtime = runCatching {
+        JSONObject(response).optInt("runtime", 0).takeIf { it > 0 }
+    }.getOrNull()
+    if (runtime != null) episodeRuntimeCache[cacheKey] = runtime
+    return runtime
+}
 
     private val found = ConcurrentHashMap<String, Int>()
 
@@ -73,6 +115,48 @@ class Tmdb(private val key: String) {
         found[cacheKey] = id
         return id
     }
+private val titleSearchCache = ConcurrentHashMap<String, Int>()
 
+/** Finds a TMDB movie or TV ID by exact title match. Results are cached. */
+fun search(isMovie: Boolean, title: String): Int? {
+    if (!enabled || title.isBlank()) return null
+
+    val type = if (isMovie) "movie" else "tv"
+    val cacheKey = "$type:${title.trim().lowercase()}"
+    titleSearchCache[cacheKey]?.let { return it }
+
+    val query = URLEncoder.encode(title.trim(), "UTF-8")
+    val v4 = key.startsWith("eyJ")
+    val url = "https://api.themoviedb.org/3/search/$type?query=$query" +
+        (if (v4) "" else "&api_key=$key")
+    val headers = if (v4) mapOf("Authorization" to "Bearer $key") else emptyMap()
+
+    val (code, response) =
+        runCatching { Http.call("GET", url, headers) }.getOrNull() ?: return null
+
+    if (code != 200) return null
+
+    val results = runCatching {
+        JSONObject(response).optJSONArray("results")
+    }.getOrNull() ?: return null
+
+    fun normalize(value: String): String =
+        value.lowercase().filter { it.isLetterOrDigit() }
+
+    val wanted = normalize(title)
+
+    for (i in 0 until results.length()) {
+        val item = results.optJSONObject(i) ?: continue
+        val resultTitle = item.str(if (isMovie) "title" else "name") ?: continue
+
+        if (normalize(resultTitle) == wanted) {
+            val id = item.int("id") ?: continue
+            titleSearchCache[cacheKey] = id
+            return id
+        }
+    }
+
+    return null
+}
     companion object { private const val IMG = "https://image.tmdb.org/t/p" }
 }

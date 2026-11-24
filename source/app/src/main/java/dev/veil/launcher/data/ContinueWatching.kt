@@ -27,8 +27,18 @@ object ContinueWatching {
             async {
                 val id = item.tmdb ?: runCatching { tmdb.find(item.isMovie, item.imdb, item.tvdb) }.getOrNull()
                     ?: return@async item
-                val art = runCatching { tmdb.art(item.isMovie, id) }.getOrNull() ?: return@async item.copy(tmdb = id)
-                item.copy(tmdb = id, backdrop = art.backdrop, thumb = art.thumb, logo = art.logo, poster = art.poster)
+                val artResult = runCatching { tmdb.art(item.isMovie, id) }
+val art = artResult.getOrNull() ?: return@async item.copy(tmdb = id)
+                                item.copy(
+                    tmdb = id,
+                    backdrop = art.backdrop,
+                    thumb = art.thumb,
+                    logo = art.logo,
+                    poster = art.poster,
+                    runtime = item.runtime?.takeIf { it > 0 }
+                        ?: art.runtime
+                        ?: if (!item.isMovie) tmdb.episodeRuntime(id, item.season, item.episode) else null
+                )
             }
         }.awaitAll()
     }

@@ -88,10 +88,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         state.nowPlaying.start()
+        state.startWatchNextUpdates()
     }
 
     override fun onStop() {
         state.nowPlaying.stop()
+        state.stopWatchNextUpdates()
         super.onStop()
     }
 

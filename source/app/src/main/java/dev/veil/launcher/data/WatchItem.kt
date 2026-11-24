@@ -28,6 +28,9 @@ data class WatchItem(
     val thumb: String? = null,
     val logo: String? = null,
     val poster: String? = null,
+    val nativeIntentUri: String? = null,
+    val nativePackage: String? = null,
+    val isNativeWatchNext: Boolean = false,
 ) {
     val key: String get() = if (isMovie) "m:${imdb ?: tmdb ?: title}" else "s:${traktId ?: serviceId ?: tmdb ?: title}"
 

@@ -1,22 +1,15 @@
-# API keys and machine paths: never commit these
+# Your API keys and machine paths: never commit or share these
 keys.properties
 local.properties
-
-# Files the install agent creates for your TV (backup + undo script)
-veil-backup.txt
-veil-system-packages.txt
-undo-veil.*
+mdblist.properties
+simkl.properties
+trakt.properties
+wetrakr.properties
+.DS_Store
 
 # Build output
 .gradle/
 .kotlin/
 build/
+app/build/
 *.apk
-*.aab
-
-# Editors / OS
-.idea/
-*.iml
-.vscode/
-.DS_Store
-Thumbs.db
