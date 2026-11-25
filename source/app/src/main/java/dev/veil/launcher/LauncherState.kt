@@ -237,6 +237,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     private val watchNextRefresh = Runnable { if (player == Player.NUVIO_IPTV) refreshWatching(force = true) }
     private val watchNextObserver = object : ContentObserver(watchHandler) {
         override fun onChange(selfChange: Boolean) {
+            android.util.Log.i("VeilNuvio", "Watch Next changed; refreshing Nuvio + IPTV row")
             // Nuvio updates its row several times in a burst; wait for it to settle.
             watchHandler.removeCallbacks(watchNextRefresh)
             watchHandler.postDelayed(watchNextRefresh, 800)
@@ -246,6 +247,11 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     /** Refreshes the Nuvio + IPTV row as soon as that app updates its Android TV Watch Next entries. */
     fun startWatchNextUpdates() {
+        // Nuvio holds its Watch Next update back while video plays and writes it as it leaves the screen, which can
+        // land just after Veil's own first read. Re-read a couple of times after coming back as a safety net.
+        watchHandler.removeCallbacks(watchNextRefresh)
+        watchHandler.postDelayed(watchNextRefresh, 2_500)
+        watchHandler.postDelayed(watchNextRefresh, 7_000)
         if (watchingNextChanges) return
         watchingNextChanges = runCatching {
             context.contentResolver.registerContentObserver(TvContract.WatchNextPrograms.CONTENT_URI, true, watchNextObserver)
