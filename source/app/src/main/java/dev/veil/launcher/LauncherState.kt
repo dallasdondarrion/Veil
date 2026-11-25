@@ -288,23 +288,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
                 val result = withContext(Dispatchers.IO) {
                     val loaded = NuvioWatchNext.load(context, NUVIO_IPTV_PKG)
 
-                    val enriched = loaded.items.map { item ->
-                        val id = tmdb.search(item.isMovie, item.title)
-                        val art = id?.let { tmdb.art(item.isMovie, it) }
-
-                        item.copy(
-                            tmdb = id ?: item.tmdb,
-                            backdrop = art?.backdrop ?: item.backdrop,
-                            thumb = item.thumb ?: art?.thumb,
-                            logo = item.logo ?: art?.logo,
-                            poster = item.poster ?: art?.poster,
-                            runtime = item.runtime?.takeIf { it > 0 }
-                                ?: (if (!item.isMovie && item.season > 0 && item.episode > 0 && (id ?: item.tmdb) != null)
-                                    tmdb.episodeRuntime((id ?: item.tmdb)!!, item.season, item.episode)
-                                else null)?.takeIf { it > 0 }
-                                ?: art?.runtime?.takeIf { it > 0 }
-                        )
-                    }
+                    val enriched = NuvioWatchNext.enrich(loaded.items, tmdb)
 
                     loaded.copy(items = enriched)
                 }
