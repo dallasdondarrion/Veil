@@ -8,7 +8,7 @@ plugins {
 val keys = Properties().apply {
     val f = rootProject.file("keys.properties")
     // Read as UTF-8 so values like non-English city names (é, ø, ü) survive.
-    if (f.exists()) f.reader(Charsets.UTF_8).use { load(it) }
+    if (!providers.gradleProperty("veilShareable").isPresent && f.exists()) f.reader(Charsets.UTF_8).use { load(it) }
 }
 // Veil's shared Trakt app: the default when keys.properties has no Trakt client ID.
 val sharedTrakt = Properties().apply {

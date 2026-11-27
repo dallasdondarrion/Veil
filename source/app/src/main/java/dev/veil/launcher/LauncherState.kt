@@ -59,7 +59,15 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     private val simkl = Simkl(context)
     private val mdblist = MdbList(context)
     private val wetrakr = WeTrakr(context)
-    private val tmdb = Tmdb(BuildConfig.TMDB_KEY)
+    var tmdb by mutableStateOf(Tmdb.forDevice(context))
+        private set
+
+    fun saveTmdbKey(key: String) {
+        prefs.edit().putString("tmdb_device_key", key).apply()
+        tmdb = Tmdb.forDevice(context)
+        refreshWatching(force = true)
+    }
+
     private val prefs = context.getSharedPreferences("veil", Context.MODE_PRIVATE)
 
     /** The one tracker Continue Watching comes from (Trakt unless you picked another). */
@@ -102,7 +110,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     var sheet by mutableStateOf<AppSheet?>(null)
     var appSwitcherOpen by mutableStateOf(false)
         private set
-    enum class SettingsPage { PLAYER, AMBIENT }
+    enum class SettingsPage { PLAYER, AMBIENT, TMDB }
     var settingsPage by mutableStateOf<SettingsPage?>(null)
     var buttonMappingOpen by mutableStateOf(false)
     var buttonMappingChoosingTarget by mutableStateOf(false)

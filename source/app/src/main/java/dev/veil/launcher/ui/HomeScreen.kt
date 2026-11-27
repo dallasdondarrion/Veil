@@ -82,10 +82,10 @@ fun HomeScreen(state: LauncherState) {
     var trendingFallback by remember { mutableStateOf(dev.veil.launcher.data.VeilCache.ambientTrending) }
     var trendingIndex by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val hasContinueWatching = state.items.isNotEmpty()
-    LaunchedEffect(hasContinueWatching, state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount) {
+    LaunchedEffect(state.tmdb, hasContinueWatching, state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount) {
         if (!hasContinueWatching) {
             trendingFallback = AmbientTrendingFallback.load(
-                state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount,
+                state.tmdb, state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount,
             )
         }
     }

@@ -15,7 +15,13 @@ no tracking.
 
 More in [`screenshots/`](screenshots).
 
-> **Installing:** Veil is built from source with *your own* API keys. The easiest way is to give this repo
+### Install the customized APK
+
+[Download Veil.apk](https://github.com/dallasdondarrion/Veil/raw/refs/heads/customized/downloads/Veil.apk) and open it on your Android-based Fire TV. In Veil, open **Settings → TMDB API key**, enter your own key, and choose **Save**. The download contains no personal TMDB key.
+
+To rebuild the downloadable APK, run `./gradlew -PveilShareable assembleRelease` from the `source` directory. This skips the local `keys.properties` file.
+
+> **Building a personal version:** Veil is built from source with *your own* API keys. The easiest way is to give this repo
 > to an AI coding agent (for example Claude Code) and ask it to follow
 > **[`AGENT_INSTALL.md`](AGENT_INSTALL.md)**. It checks your TV, asks for your keys, backs up your settings,
 > and confirms before it changes anything.

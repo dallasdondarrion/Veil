@@ -1,5 +1,7 @@
 package dev.veil.launcher.data
 
+import android.content.Context
+import dev.veil.launcher.BuildConfig
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
@@ -189,11 +191,20 @@ class Tmdb(private val key: String) {
             }
         }
 
-    private companion object {
-        const val API = "https://api.themoviedb.org/3"
-        const val IMG = "https://image.tmdb.org/t/p"
-        const val TV_NEWS = 10763
-        const val TV_REALITY = 10764
-        const val TV_TALK = 10767
+    companion object {
+        private var current: Tmdb? = null
+
+        @Synchronized
+        fun forDevice(context: Context): Tmdb {
+            val prefs = context.getSharedPreferences("veil", Context.MODE_PRIVATE)
+            val key = prefs.getString("tmdb_device_key", null) ?: BuildConfig.TMDB_KEY
+            return current?.takeIf { it.key == key } ?: Tmdb(key).also { current = it }
+        }
+
+        private const val API = "https://api.themoviedb.org/3"
+        private const val IMG = "https://image.tmdb.org/t/p"
+        private const val TV_NEWS = 10763
+        private const val TV_REALITY = 10764
+        private const val TV_TALK = 10767
     }
 }

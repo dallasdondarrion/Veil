@@ -183,6 +183,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
     }
     val current = ThemeState.current
+    val tmdbButton = remember { FocusRequester() }
     val playerButton = remember { FocusRequester() }
     val weatherButton = remember { FocusRequester() }
     val updateButton = remember { FocusRequester() }
@@ -192,6 +193,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
     // After a window opened from this menu closes, put focus back on the button that opened it.
     LaunchedEffect(state.menuReturn) {
         val target = when (state.menuReturn) {
+            "tmdb" -> tmdbButton
             "player" -> playerButton
             "ambient" -> firstItem
             "weather" -> weatherButton
@@ -256,6 +258,13 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             icon = VeilIcons.Play, title = "Play shows with", subtitle = state.player.title,
             modifier = Modifier.focusRequester(playerButton),
             onClick = { state.settingsPage = LauncherState.SettingsPage.PLAYER },
+        )
+
+        MenuButton(
+            icon = VeilIcons.Play, title = "TMDB API key",
+            subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
+            modifier = Modifier.focusRequester(tmdbButton),
+            onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
         )
 
         // Themes
@@ -359,6 +368,54 @@ private fun closeSettingsPage(state: LauncherState, returnTo: String) {
     state.settingsPage = null
     state.veilMenuOpen = true
     state.menuReturn = returnTo
+}
+
+@Composable
+internal fun TmdbSettingsDialog(state: LauncherState) {
+    var input by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val close = { closeSettingsPage(state, "tmdb") }
+    val field = remember { FocusRequester() }
+    SettingsDialog("TMDB API key", error, close) {
+        Text("Enter a TMDB v3 API key or API Read Access Token. Veil saves it on this device.",
+            fontSize = 13.sp, color = Veil.Text)
+        BasicTextField(
+            value = input,
+            onValueChange = { input = it; error = null },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+            ),
+            textStyle = TextStyle(color = Veil.Text, fontSize = 14.sp),
+            cursorBrush = SolidColor(Veil.Accent),
+            modifier = Modifier.fillMaxWidth().focusRequester(field).background(Veil.Glass)
+                .padding(12.dp),
+            decorationBox = { inner ->
+                Box {
+                    if (input.isEmpty()) Text("Enter key", color = Veil.Text.copy(alpha = 0.65f), fontSize = 14.sp)
+                    inner()
+                }
+            },
+        )
+        MenuButton(VeilIcons.Play, "Save", "Use this key for artwork on this device") {
+            val key = input.trim()
+            if (key.matches(Regex("[a-fA-F0-9]{32}")) ||
+                key.matches(Regex("eyJ[A-Za-z0-9_-]+[.][A-Za-z0-9_-]+[.][A-Za-z0-9_-]+"))) {
+                state.saveTmdbKey(key)
+                close()
+            } else {
+                error = "Enter a 32-character API key or a complete API Read Access Token."
+            }
+        }
+        if (state.tmdb.enabled) {
+            MenuButton(VeilIcons.Unpin, "Remove key", "Disable TMDB artwork on this device") {
+                state.saveTmdbKey("")
+                close()
+            }
+        }
+        LaunchedEffect(Unit) { field.requestFocus() }
+    }
 }
 
 @Composable

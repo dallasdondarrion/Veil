@@ -121,10 +121,11 @@ fun AmbientScreen(
         if (clean) { delay(5_000); reveal = false }
     }
     val chrome by animateFloatAsState(if (!clean || reveal) 1f else 0f, tween(900), label = "chrome")
+    val tmdb = dev.veil.launcher.data.Tmdb.forDevice(LocalContext.current)
     var trendingFallback by remember { mutableStateOf(VeilCache.ambientTrending) }
-    LaunchedEffect(track == null, trendingWindow, trendingMovieCount, trendingShowCount) {
+    LaunchedEffect(tmdb, track == null, trendingWindow, trendingMovieCount, trendingShowCount) {
         if (track == null && (trendingMovieCount > 0 || trendingShowCount > 0)) {
-            trendingFallback = AmbientTrendingFallback.load(trendingWindow, trendingMovieCount, trendingShowCount)
+            trendingFallback = AmbientTrendingFallback.load(tmdb, trendingWindow, trendingMovieCount, trendingShowCount)
         }
     }
     val artworkItems = remember(items, trendingFallback) {
