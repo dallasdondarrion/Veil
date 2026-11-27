@@ -1,6 +1,7 @@
 package dev.veil.launcher.data
 
 import java.net.URLEncoder
+import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
@@ -85,6 +86,9 @@ class Tmdb(private val key: String) {
                 if (genres != null && (0 until genres.length()).any { genres.optInt(it) in excludedGenres }) continue
                 val title = result.str(if (isMovie) "title" else "name")?.takeIf { it.isNotBlank() } ?: continue
                 if (!isMovie && gameShowText.containsMatchIn("$title ${result.str("overview").orEmpty()}")) continue
+                val releaseDate = result.str(if (isMovie) "release_date" else "first_air_date")
+                    ?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: continue
+                if (releaseDate.isAfter(LocalDate.now())) continue
                 val id = result.optInt("id", 0).takeIf { it > 0 } ?: continue
                 val backdropPath = result.str("backdrop_path") ?: continue
                 val posterPath = result.str("poster_path")
@@ -99,9 +103,7 @@ class Tmdb(private val key: String) {
                     poster = posterPath?.let { "$IMG/w342$it" },
                     isTrending = true,
                     overview = result.str("overview")?.takeIf { it.isNotBlank() },
-                    releaseYear = result.str(if (isMovie) "release_date" else "first_air_date")
-                        ?.take(4)?.takeIf { it.length == 4 },
-                    voteAverage = result.optDouble("vote_average", 0.0).toFloat().takeIf { it > 0f },
+                    releaseYear = releaseDate.year.toString(),
                 )
                 if (found.size == limit) return found
             }

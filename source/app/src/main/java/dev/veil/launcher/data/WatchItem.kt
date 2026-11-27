@@ -51,7 +51,6 @@ data class WatchItem(
             isTrending -> buildList {
                 add(if (isMovie) "Movie" else "TV show")
                 releaseYear?.let(::add)
-                voteAverage?.takeIf { it > 0f }?.let { add(String.format(java.util.Locale.US, "TMDB %.1f", it)) }
             }.joinToString(" · ")
             isMovie -> "Movie"
             else -> buildString {
