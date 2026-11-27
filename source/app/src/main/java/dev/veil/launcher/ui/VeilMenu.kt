@@ -341,6 +341,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
                 icon = VeilIcons.Sparkle,
                 title = "Check for Updates: " + if (state.updateCheck) "on" else "off",
                 subtitle = "Once a day, asks GitHub if a newer Veil is out. Nothing about you is sent",
+                modifier = Modifier.onPreviewKeyEvent { it.key == Key.DirectionDown },
                 onClick = state::toggleUpdateCheck,
             )
         }
