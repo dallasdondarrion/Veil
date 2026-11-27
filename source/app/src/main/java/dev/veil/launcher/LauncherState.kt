@@ -234,7 +234,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     }
 
     private val watchHandler = Handler(Looper.getMainLooper())
-    private val watchNextRefresh = Runnable { if (player == Player.NUVIO_IPTV) refreshWatching(force = true) }
+    private val watchNextRefresh = Runnable { if (player.usesWatchNext) refreshWatching(force = true) }
     private val watchNextObserver = object : ContentObserver(watchHandler) {
         override fun onChange(selfChange: Boolean) {
             android.util.Log.i("VeilNuvio", "Watch Next changed; refreshing Nuvio + IPTV row")
@@ -271,11 +271,12 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     val selected = player
     val now = System.currentTimeMillis()
 
-    if (selected == Player.NUVIO_IPTV) {
+    if (selected.usesWatchNext) {
         if (!force && now - lastNativeLoad < 60_000) return
-        if (!isInstalled(selected)) {
+        val watchPkg = installedPackage(selected)
+        if (watchPkg == null) {
             items = emptyList(); VeilCache.items = emptyList()
-            error = "Nuvio + IPTV isn't installed"
+            error = "${selected.title} isn't installed"
             loading = false
             return
         }
@@ -286,7 +287,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
             loading = true
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val loaded = NuvioWatchNext.load(context, NUVIO_IPTV_PKG)
+                    val loaded = NuvioWatchNext.load(context, watchPkg)
 
                     val enriched = NuvioWatchNext.enrich(loaded.items, tmdb)
 
@@ -817,17 +818,28 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     // ---- Which app plays Continue Watching (chosen once in the Veil menu) ----
 
-    enum class Player(val id: String, val title: String, val pkg: String) {
-        NUVIO_IPTV("nuvio", "Nuvio + IPTV", NUVIO_IPTV_PKG),
-        NUVIO_LEGACY("nuvio_legacy", "Nuvio Legacy", NUVIO_LEGACY_PKG),
+    /**
+     * The apps Continue Watching can play with. Watch Next apps publish their own Continue Watching row to Android TV
+     * (Veil reads it); Legacy is read through the connected tracker instead. [packages] lists every package name the
+     * app is known to install as; the one actually on the TV is used.
+     */
+    enum class Player(val id: String, val title: String, val packages: List<String>, val usesWatchNext: Boolean) {
+        NUVIO_IPTV("nuvio", "Nuvio + IPTV", listOf(NUVIO_IPTV_PKG), true),
+        NUVIO_LEGACY("nuvio_legacy", "Nuvio Legacy", listOf(NUVIO_LEGACY_PKG), false),
+        NUVIO_MAIN("nuvio_main", "Nuvio", listOf("com.nuvio.tv", "com.nuvio.app"), true),
+        NUVIO_ARC("nuvio_arc", "Nuvio Arc", listOf("com.nuvio.tv.test"), true),
     }
 
     // The old "nuvio" preference intentionally maps to Nuvio + IPTV for existing installs.
     var player by mutableStateOf(Player.entries.firstOrNull { it.id == prefs.getString("player", null) } ?: Player.NUVIO_IPTV)
         private set
 
-    fun isInstalled(p: Player): Boolean =
-        runCatching { context.packageManager.getPackageInfo(p.pkg, 0); true }.getOrDefault(false)
+    /** The package name [p] is installed as on this TV, or null if it isn't installed. */
+    fun installedPackage(p: Player): String? = p.packages.firstOrNull { pkg ->
+        runCatching { context.packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)
+    }
+
+    fun isInstalled(p: Player): Boolean = installedPackage(p) != null
 
     fun choosePlayer(p: Player) {
         if (!isInstalled(p)) { dev.veil.launcher.ui.Sfx.error(); showToast("${p.title} isn't installed on this TV"); return }
@@ -845,10 +857,12 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     fun open(item: WatchItem) {
         val selected = effectivePlayer()
-        if (item.isNativeWatchNext && selected == Player.NUVIO_IPTV && openNativeIntent(item)) return
-        when (selected) {
-            Player.NUVIO_IPTV -> openInNuvioIptv(item)
-            Player.NUVIO_LEGACY -> openInNuvioLegacy(item)
+        val pkg = installedPackage(selected) ?: return
+        if (selected.usesWatchNext) {
+            if (item.isNativeWatchNext && openNativeIntent(item)) return
+            openInNuvioApp(item, pkg)
+        } else {
+            openInNuvioLegacy(item)
         }
     }
 
@@ -864,9 +878,9 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
         return start(intent)
     }
 
-    /** Nuvio + IPTV accepts the same activity extras used by its Watch Next cards. */
-    private fun openInNuvioIptv(item: WatchItem) {
-        val i = Intent(Intent.ACTION_MAIN).setClassName(NUVIO_IPTV_PKG, NUVIO_ACTIVITY)
+    /** Nuvio, Nuvio Arc and Nuvio + IPTV accept the same activity extras used by their Watch Next cards. */
+    private fun openInNuvioApp(item: WatchItem, pkg: String) {
+        val i = Intent(Intent.ACTION_MAIN).setClassName(pkg, NUVIO_ACTIVITY)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val imdb = item.imdb
         if (imdb != null) {
@@ -883,7 +897,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
             item.thumb?.let { i.putExtra("backdrop", it) }
             item.logo?.let { i.putExtra("logo", it) }
         }
-        if (!start(i)) context.packageManager.getLeanbackLaunchIntentForPackage(NUVIO_IPTV_PKG)?.let {
+        if (!start(i)) context.packageManager.getLeanbackLaunchIntentForPackage(pkg)?.let {
             start(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }

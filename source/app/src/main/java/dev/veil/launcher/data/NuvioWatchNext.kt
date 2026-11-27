@@ -5,7 +5,7 @@ import android.content.Intent
 import android.media.tv.TvContract
 import android.util.Log
 
-/** Reads only the selected app's public Android TV Watch Next entries. */
+/** Reads only the selected app's public Android TV Watch Next entries (Nuvio, Nuvio Arc, Nuvio + IPTV). */
 object NuvioWatchNext {
     data class Result(val items: List<WatchItem>, val error: String? = null)
 
@@ -83,7 +83,7 @@ object NuvioWatchNext {
             Result(emptyList(), "Android TV didn't allow access to Watch Next")
         } catch (t: Throwable) {
             Log.w("VeilNuvio", "Watch Next query failed", t)
-            Result(emptyList(), "Couldn't read Nuvio + IPTV's Continue Watching")
+            Result(emptyList(), "Couldn't read this app's Continue Watching")
         }
     }
 

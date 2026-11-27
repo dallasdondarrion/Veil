@@ -242,12 +242,15 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         // Which app OK on a Continue Watching card opens (chosen once, remembered)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("PLAY SHOWS WITH")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LauncherState.Player.entries.forEach { p ->
-                    ModeChip(
-                        if (state.isInstalled(p)) p.title else "${p.title} (not installed)",
-                        VeilIcons.Play, state.player == p, Modifier.weight(1f),
-                    ) { state.choosePlayer(p) }
+            LauncherState.Player.entries.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pair.forEach { p ->
+                        ModeChip(
+                            if (state.isInstalled(p)) p.title else "${p.title} (not installed)",
+                            VeilIcons.Play, state.player == p, Modifier.weight(1f),
+                        ) { state.choosePlayer(p) }
+                    }
+                    if (pair.size < 2) Spacer(Modifier.weight(1f))
                 }
             }
         }

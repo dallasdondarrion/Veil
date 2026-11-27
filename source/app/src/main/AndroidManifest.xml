@@ -32,6 +32,9 @@
         </intent>
         <package android:name="com.nuvio.livetv" />
         <package android:name="space.nuvio.nativelegacy" />
+        <package android:name="com.nuvio.tv" />
+        <package android:name="com.nuvio.app" />
+        <package android:name="com.nuvio.tv.test" />
     </queries>
 
     <application
