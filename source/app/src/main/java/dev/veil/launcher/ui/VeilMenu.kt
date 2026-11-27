@@ -260,13 +260,6 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             onClick = { state.settingsPage = LauncherState.SettingsPage.PLAYER },
         )
 
-        MenuButton(
-            icon = VeilIcons.Play, title = "TMDB API key",
-            subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
-            modifier = Modifier.focusRequester(tmdbButton),
-            onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
-        )
-
         // Themes
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val shown = focusedTheme ?: current
@@ -324,6 +317,16 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
                 title = "Seasonal touches: " + if (state.seasonal) "on" else "off",
                 subtitle = "Snow in December, New Year countdown… in Ambient",
                 onClick = state::toggleSeasonal,
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("ARTWORK")
+            MenuButton(
+                icon = VeilIcons.Play, title = "TMDB API key",
+                subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
+                modifier = Modifier.focusRequester(tmdbButton),
+                onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
             )
         }
 
