@@ -54,26 +54,29 @@ class Tmdb(private val key: String) {
         return art
     }
 
-    /** Top daily trending titles with backdrops, suitable for the Ambient fallback. */
-    fun ambientTrending(): List<WatchItem> =
-        trending(isMovie = true, limit = 5) +
+    /** Top daily or weekly trending titles with backdrops, suitable for Home and Ambient backgrounds. */
+    fun ambientTrending(window: String, movieCount: Int, showCount: Int): List<WatchItem> =
+        trending(isMovie = true, limit = movieCount, window = window) +
             trending(
                 isMovie = false,
-                limit = 5,
+                limit = showCount,
                 excludedGenres = setOf(TV_NEWS, TV_REALITY, TV_TALK),
+                window = window,
             )
 
     private fun trending(
         isMovie: Boolean,
         limit: Int,
         excludedGenres: Set<Int> = emptySet(),
+        window: String = "day",
     ): List<WatchItem> {
         if (!enabled || limit <= 0) return emptyList()
         val media = if (isMovie) "movie" else "tv"
+        val period = if (window == "week") "week" else "day"
         val found = ArrayList<WatchItem>(limit)
         val gameShowText = Regex("\\b(game show|quiz show|trivia show|late[- ]night)\\b", RegexOption.IGNORE_CASE)
         for (page in 1..4) {
-            val results = get("trending/$media/day", "language=en-US", "page=$page")
+            val results = get("trending/$media/$period", "language=en-US", "page=$page")
                 ?.optJSONArray("results") ?: break
             for (i in 0 until results.length()) {
                 val result = results.optJSONObject(i) ?: continue
@@ -95,6 +98,10 @@ class Tmdb(private val key: String) {
                     thumb = "$IMG/w780$backdropPath",
                     poster = posterPath?.let { "$IMG/w342$it" },
                     isTrending = true,
+                    overview = result.str("overview")?.takeIf { it.isNotBlank() },
+                    releaseYear = result.str(if (isMovie) "release_date" else "first_air_date")
+                        ?.take(4)?.takeIf { it.length == 4 },
+                    voteAverage = result.optDouble("vote_average", 0.0).toFloat().takeIf { it > 0f },
                 )
                 if (found.size == limit) return found
             }

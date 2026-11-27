@@ -104,6 +104,10 @@ fun AmbientScreen(
     seasonal: Boolean = true,
     /** Show synced lyrics in Veil music mode (when the song has them). */
     lyrics: Boolean = true,
+    trendingWindow: String = "day",
+    trendingMovieCount: Int = 5,
+    trendingShowCount: Int = 5,
+    slideIntervalSeconds: Int = 14,
 ) {
     val season = if (seasonal) currentSeason() else Season.NONE
     val sunday = java.time.LocalDate.now().dayOfWeek == java.time.DayOfWeek.SUNDAY
@@ -117,15 +121,24 @@ fun AmbientScreen(
         if (clean) { delay(5_000); reveal = false }
     }
     val chrome by animateFloatAsState(if (!clean || reveal) 1f else 0f, tween(900), label = "chrome")
-    val hasContinueArtwork = items.any { it.backdrop != null }
     var trendingFallback by remember { mutableStateOf(VeilCache.ambientTrending) }
-    LaunchedEffect(hasContinueArtwork, track == null) {
-        if (track == null && !hasContinueArtwork) {
-            trendingFallback = AmbientTrendingFallback.load()
+    LaunchedEffect(track == null, trendingWindow, trendingMovieCount, trendingShowCount) {
+        if (track == null && (trendingMovieCount > 0 || trendingShowCount > 0)) {
+            trendingFallback = AmbientTrendingFallback.load(trendingWindow, trendingMovieCount, trendingShowCount)
         }
     }
     val artworkItems = remember(items, trendingFallback) {
-        items.filter { it.backdrop != null }.ifEmpty { trendingFallback }
+        val slides = items.filter { it.backdrop != null }.toMutableList()
+        fun normalizedTitle(value: String) = value.lowercase().filter { it.isLetterOrDigit() }
+        trendingFallback.filter { it.backdrop != null }.forEach { candidate ->
+            val alreadyShown = slides.any { current ->
+                current.isMovie == candidate.isMovie &&
+                    ((current.tmdb != null && current.tmdb == candidate.tmdb) ||
+                        normalizedTitle(current.title) == normalizedTitle(candidate.title))
+            }
+            if (!alreadyShown) slides += candidate
+        }
+        slides
     }
 
     Box(Modifier.fillMaxSize().background(Veil.Bg)) {
@@ -138,7 +151,7 @@ fun AmbientScreen(
             when {
                 music && track != null && viz -> VisualizerFace(track, chromeAlpha = chrome)
                 music && track != null -> MusicFace(track, lyrics)
-                else -> ArtworkFace(artworkItems)
+                else -> ArtworkFace(artworkItems, slideIntervalSeconds)
             }
         }
 
@@ -411,12 +424,12 @@ private fun clock(ms: Long): String {
 }
 
 @Composable
-private fun ArtworkFace(items: List<WatchItem>) {
+private fun ArtworkFace(items: List<WatchItem>, slideIntervalSeconds: Int) {
     val withArt = remember(items) { items.filter { it.backdrop != null } }
     var index by remember(withArt) { mutableIntStateOf(0) }
     LaunchedEffect(withArt) {
         while (withArt.size > 1) {
-            delay(14_000)
+            delay(slideIntervalSeconds.coerceIn(5, 120) * 1_000L)
             index = (index + 1) % withArt.size
         }
     }
@@ -458,6 +471,11 @@ private fun ArtworkFace(items: List<WatchItem>) {
                     )
                     TitleOrLogo(it, fontSize = 40.sp, maxLogoHeight = 120.dp)
                     Text(it.heroLine, fontSize = 14.sp, color = Veil.Text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (it.isTrending) {
+                        it.overview?.let { overview ->
+                            Text(overview, fontSize = 11.sp, lineHeight = 15.sp, color = Veil.Text.copy(alpha = 0.78f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             } else {
                 Text("Private by design.", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)

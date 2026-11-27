@@ -627,6 +627,42 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     private var lastInput = System.currentTimeMillis()
     private var swallowKey: Int? = null
 
+    var ambientTrendingWindow by mutableStateOf(if (prefs.getString("ambient_trending_window", "day") == "week") "week" else "day")
+        private set
+    var ambientMovieCount by mutableStateOf(prefs.getInt("ambient_movie_count", 5).coerceIn(0, 10))
+        private set
+    var ambientShowCount by mutableStateOf(prefs.getInt("ambient_show_count", 5).coerceIn(0, 10))
+        private set
+    var ambientSwitchSeconds by mutableStateOf(prefs.getInt("ambient_switch_seconds", 14).coerceIn(5, 120))
+        private set
+
+    fun chooseAmbientTrendingWindow(window: String) {
+        if (window !in setOf("day", "week") || window == ambientTrendingWindow) return
+        ambientTrendingWindow = window
+        prefs.edit().putString("ambient_trending_window", window).apply()
+    }
+
+    fun chooseAmbientMovieCount(count: Int) {
+        val selected = count.coerceIn(0, 10)
+        if (selected == ambientMovieCount) return
+        ambientMovieCount = selected
+        prefs.edit().putInt("ambient_movie_count", selected).apply()
+    }
+
+    fun chooseAmbientShowCount(count: Int) {
+        val selected = count.coerceIn(0, 10)
+        if (selected == ambientShowCount) return
+        ambientShowCount = selected
+        prefs.edit().putInt("ambient_show_count", selected).apply()
+    }
+
+    fun chooseAmbientSwitchSeconds(seconds: Int) {
+        val selected = seconds.coerceIn(5, 120)
+        if (selected == ambientSwitchSeconds) return
+        ambientSwitchSeconds = selected
+        prefs.edit().putInt("ambient_switch_seconds", selected).apply()
+    }
+
     fun startAmbient() { ambient = true }
 
     // ---- Veil Ambient as the TV's screensaver --------------------------------------------------------

@@ -262,6 +262,41 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
                         }
                     }
                 }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SectionLabel("TRENDING PERIOD")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ModeChip("Daily", VeilIcons.Sparkle, state.ambientTrendingWindow == "day", Modifier.weight(1f)) {
+                            state.chooseAmbientTrendingWindow("day")
+                        }
+                        ModeChip("Weekly", VeilIcons.Sparkle, state.ambientTrendingWindow == "week", Modifier.weight(1f)) {
+                            state.chooseAmbientTrendingWindow("week")
+                        }
+                    }
+                    SectionLabel("MOVIE BACKGROUNDS")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 3, 5, 10).forEach { count ->
+                            ModeChip("$count", VeilIcons.Star, state.ambientMovieCount == count, Modifier.weight(1f)) {
+                                state.chooseAmbientMovieCount(count)
+                            }
+                        }
+                    }
+                    SectionLabel("TV SHOW BACKGROUNDS")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 3, 5, 10).forEach { count ->
+                            ModeChip("$count", VeilIcons.Play, state.ambientShowCount == count, Modifier.weight(1f)) {
+                                state.chooseAmbientShowCount(count)
+                            }
+                        }
+                    }
+                    SectionLabel("CHANGE BACKGROUND EVERY")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(10, 14, 30, 60).forEach { seconds ->
+                            ModeChip(
+                                "${seconds}s", VeilIcons.Timer, state.ambientSwitchSeconds == seconds, Modifier.weight(1f),
+                            ) { state.chooseAmbientSwitchSeconds(seconds) }
+                        }
+                    }
+                }
             }
         }
 

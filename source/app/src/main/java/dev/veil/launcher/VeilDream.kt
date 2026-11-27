@@ -120,6 +120,10 @@ class VeilDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
             weeklyBlocked = VeilCache.weeklyBlocked,
             seasonal = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getBoolean("seasonal", true) },
             lyrics = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getBoolean("lyrics_music", true) },
+            trendingWindow = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getString("ambient_trending_window", "day") ?: "day" },
+            trendingMovieCount = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getInt("ambient_movie_count", 5).coerceIn(0, 10) },
+            trendingShowCount = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getInt("ambient_show_count", 5).coerceIn(0, 10) },
+            slideIntervalSeconds = remember { ctx.getSharedPreferences("veil", MODE_PRIVATE).getInt("ambient_switch_seconds", 14).coerceIn(5, 120) },
             visualizer = remember {
                 ctx.getSharedPreferences("veil", MODE_PRIVATE).getString("music_style", "veil") == "viz" &&
                     dev.veil.launcher.viz.VizSettings.supported(ctx) &&

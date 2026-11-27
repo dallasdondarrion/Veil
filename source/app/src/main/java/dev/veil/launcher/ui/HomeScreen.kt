@@ -82,13 +82,17 @@ fun HomeScreen(state: LauncherState) {
     var trendingFallback by remember { mutableStateOf(dev.veil.launcher.data.VeilCache.ambientTrending) }
     var trendingIndex by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val hasContinueWatching = state.items.isNotEmpty()
-    LaunchedEffect(hasContinueWatching) {
-        if (!hasContinueWatching) trendingFallback = AmbientTrendingFallback.load()
+    LaunchedEffect(hasContinueWatching, state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount) {
+        if (!hasContinueWatching) {
+            trendingFallback = AmbientTrendingFallback.load(
+                state.ambientTrendingWindow, state.ambientMovieCount, state.ambientShowCount,
+            )
+        }
     }
-    LaunchedEffect(hasContinueWatching, trendingFallback) {
+    LaunchedEffect(hasContinueWatching, trendingFallback, state.ambientSwitchSeconds) {
         trendingIndex = 0
         while (!hasContinueWatching && trendingFallback.size > 1) {
-            delay(14_000)
+            delay(state.ambientSwitchSeconds * 1_000L)
             trendingIndex = (trendingIndex + 1) % trendingFallback.size
         }
     }
@@ -158,7 +162,7 @@ fun HomeScreen(state: LauncherState) {
             TopBar(state, modifier = Modifier.zIndex(1f).recede(frostTop).padding(horizontal = EDGE))
             Spacer(Modifier.weight(1f))
             Column(Modifier.recede(frost)) {
-                Hero(hero, state, Modifier.padding(horizontal = EDGE))
+                Hero(hero ?: backgroundItem, state, Modifier.padding(horizontal = EDGE))
                 Spacer(Modifier.height(24.dp))
                 ContinueRow(state, focusKey)
                 Spacer(Modifier.height(14.dp))
@@ -263,6 +267,11 @@ private fun HeroBody(hero: WatchItem?, state: LauncherState) {
         )
         TitleOrLogo(hero, fontSize = 48.sp, maxLogoHeight = 104.dp)
         Text(hero.heroLine, fontSize = 14.sp, color = Veil.Text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (hero.isTrending) {
+            hero.overview?.let {
+                Text(it, fontSize = 11.sp, lineHeight = 15.sp, color = Veil.Text.copy(alpha = 0.78f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
         // "done by": when you'd finish if you started now (refreshes every minute).
         val doneBy = hero.minutesLeft?.let { doneByText(it, state.minuteTick) }
         if (hero.progress > 0f) {

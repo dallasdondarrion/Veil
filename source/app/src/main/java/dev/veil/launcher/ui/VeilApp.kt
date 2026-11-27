@@ -91,6 +91,10 @@ fun VeilApp(state: LauncherState) {
             weeklyBlocked = state.dnsWeekly?.blocked,
             seasonal = state.seasonal,
             lyrics = state.lyricsMusic,
+            trendingWindow = state.ambientTrendingWindow,
+            trendingMovieCount = state.ambientMovieCount,
+            trendingShowCount = state.ambientShowCount,
+            slideIntervalSeconds = state.ambientSwitchSeconds,
         )
     }
 

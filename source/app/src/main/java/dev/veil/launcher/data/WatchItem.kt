@@ -32,6 +32,9 @@ data class WatchItem(
     val nativePackage: String? = null,
     val isNativeWatchNext: Boolean = false,
     val isTrending: Boolean = false,
+    val overview: String? = null,
+    val releaseYear: String? = null,
+    val voteAverage: Float? = null,
 ) {
     val key: String get() = if (isMovie) "m:${imdb ?: tmdb ?: title}" else "s:${traktId ?: serviceId ?: tmdb ?: title}"
 
@@ -45,8 +48,12 @@ data class WatchItem(
     /** Hero line: "Season 7 · Episode 13 — Funeral (1)". */
     val heroLine: String
         get() = when {
+            isTrending -> buildList {
+                add(if (isMovie) "Movie" else "TV show")
+                releaseYear?.let(::add)
+                voteAverage?.takeIf { it > 0f }?.let { add(String.format(java.util.Locale.US, "TMDB %.1f", it)) }
+            }.joinToString(" · ")
             isMovie -> "Movie"
-            isTrending -> "TV show"
             else -> buildString {
                 append("Season $season · Episode $episode")
                 episodeTitle?.let { append(" — ").append(it) }
