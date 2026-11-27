@@ -336,15 +336,21 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
 private const val TV_LISTINGS_PERMISSION = "android.permission.READ_TV_LISTINGS"
 
 @Composable
-private fun SettingsDialog(title: String, close: () -> Unit, content: @Composable () -> Unit) {
+private fun SettingsDialog(title: String, message: String?, close: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = close) {
         Column(
             Modifier.width(440.dp).heightIn(max = 480.dp).clip(RoundedCornerShape(22.dp))
-                .background(Veil.Sheet).verticalScroll(rememberScrollState()).padding(24.dp),
+                .background(Veil.Sheet).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Veil.Text)
-            content()
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) { content() }
+            if (message != null) {
+                Text(message, fontSize = 13.sp, color = Veil.Text)
+            }
         }
     }
 }
@@ -370,7 +376,7 @@ internal fun PlayerSettingsDialog(state: LauncherState) {
             permissionHint = true
         }
     }
-    SettingsDialog("Play shows with", close) {
+    SettingsDialog("Play shows with", state.toast, close) {
         LauncherState.Player.entries.forEach { player ->
             val installed = state.isInstalled(player)
             val selected = state.player == player
@@ -410,7 +416,7 @@ internal fun AmbientSettingsDialog(state: LauncherState) {
     val first = remember { FocusRequester() }
     val vizButton = remember { FocusRequester() }
     val close = { closeSettingsPage(state, "ambient") }
-    SettingsDialog("Veil Ambient", close) {
+    SettingsDialog("Veil Ambient", state.toast, close) {
         MenuButton(
             icon = VeilIcons.Play, title = "Start now", subtitle = "Show Veil Ambient right away",
             modifier = Modifier.focusRequester(first),

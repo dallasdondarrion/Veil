@@ -93,7 +93,7 @@ fun VeilApp(state: LauncherState) {
     // Short confirmation ("Marked … as watched"), bottom centre
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
-            visible = state.toast != null,
+            visible = state.toast != null && (state.settingsPage == null || state.vizSettingsOpen),
             enter = fadeIn(tween(200)) + slideInVertically(tween(250)) { it / 2 },
             exit = fadeOut(tween(300)),
         ) {
