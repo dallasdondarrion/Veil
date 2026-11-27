@@ -183,6 +183,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
     }
     val current = ThemeState.current
+    val ambientButton = remember { FocusRequester() }
     val tmdbButton = remember { FocusRequester() }
     val playerButton = remember { FocusRequester() }
     val weatherButton = remember { FocusRequester() }
@@ -195,7 +196,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         val target = when (state.menuReturn) {
             "tmdb" -> tmdbButton
             "player" -> playerButton
-            "ambient" -> firstItem
+            "ambient" -> ambientButton
             "weather" -> weatherButton
             "update" -> updateButton
             // "Hide until the next update": move focus off the row first, then remove it. Removing the
@@ -241,15 +242,9 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
 
         MenuButton(
-            icon = VeilIcons.Sparkle, title = "Veil Ambient",
-            subtitle = "Screensaver, backgrounds & music mode",
-            modifier = Modifier.focusRequester(firstItem),
-            onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
-        )
-
-        MenuButton(
             icon = VeilIcons.Grid,
             title = "Button Mapping",
+            modifier = Modifier.focusRequester(firstItem),
             subtitle = "Map remote buttons to Recent Apps or an installed app",
             onClick = { state.buttonMappingOpen = true },
         )
@@ -321,7 +316,13 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("ARTWORK")
+            SectionLabel("APPEARANCE & ARTWORK")
+            MenuButton(
+                icon = VeilIcons.Sparkle, title = "Veil Ambient",
+                subtitle = "Screensaver, backgrounds & music mode",
+                modifier = Modifier.focusRequester(ambientButton),
+                onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
+            )
             MenuButton(
                 icon = VeilIcons.Play, title = "TMDB API key",
                 subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
