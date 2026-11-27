@@ -2,6 +2,10 @@
 
 package dev.veil.launcher.ui
 
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -179,7 +183,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
     }
     val current = ThemeState.current
-    val vizButton = remember { FocusRequester() }
+    val playerButton = remember { FocusRequester() }
     val weatherButton = remember { FocusRequester() }
     val updateButton = remember { FocusRequester() }
     // The panel stays built between opens; start each open scrolled to the top, as before.
@@ -188,7 +192,8 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
     // After a window opened from this menu closes, put focus back on the button that opened it.
     LaunchedEffect(state.menuReturn) {
         val target = when (state.menuReturn) {
-            "viz" -> vizButton
+            "player" -> playerButton
+            "ambient" -> firstItem
             "weather" -> weatherButton
             "update" -> updateButton
             // "Hide until the next update": move focus off the row first, then remove it. Removing the
@@ -233,72 +238,12 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             )
         }
 
-        // Veil Ambient: OK opens its options (start now, use as the TV's screensaver, and how long the TV waits)
-        var ambientOpen by remember { mutableStateOf(false) }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MenuButton(
-                icon = VeilIcons.Sparkle, title = "Veil Ambient",
-                subtitle = if (ambientOpen) "Screensaver & music mode · OK to close"
-                else "Screensaver & music mode · OK for options",
-                modifier = Modifier.focusRequester(firstItem), onClick = { ambientOpen = !ambientOpen },
-            )
-            if (ambientOpen) {
-                MenuButton(
-                    icon = VeilIcons.Play, title = "Start now", subtitle = "Show Veil Ambient right away",
-                    onClick = state::startAmbient,
-                )
-                MenuButton(
-                    icon = VeilIcons.Sparkle,
-                    title = "TV screensaver: " + if (state.screensaverIsVeil) "Veil Ambient" else "TV's own",
-                    subtitle = "Veil Ambient as the screensaver in any app. Off puts the TV's own screensaver back",
-                    onClick = state::toggleScreensaver,
-                )
-                if (state.screensaverIsVeil) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(5, 10, 15).forEach { minutes ->
-                            ModeChip(
-                                "$minutes min", VeilIcons.Sparkle, state.screensaverMinutes == minutes, Modifier.weight(1f),
-                            ) { state.chooseScreensaverMinutes(minutes) }
-                        }
-                    }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SectionLabel("TRENDING PERIOD")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ModeChip("Daily", VeilIcons.Sparkle, state.ambientTrendingWindow == "day", Modifier.weight(1f)) {
-                            state.chooseAmbientTrendingWindow("day")
-                        }
-                        ModeChip("Weekly", VeilIcons.Sparkle, state.ambientTrendingWindow == "week", Modifier.weight(1f)) {
-                            state.chooseAmbientTrendingWindow("week")
-                        }
-                    }
-                    SectionLabel("MOVIE BACKGROUNDS")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(0, 3, 5, 10).forEach { count ->
-                            ModeChip("$count", VeilIcons.Star, state.ambientMovieCount == count, Modifier.weight(1f)) {
-                                state.chooseAmbientMovieCount(count)
-                            }
-                        }
-                    }
-                    SectionLabel("TV SHOW BACKGROUNDS")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(0, 3, 5, 10).forEach { count ->
-                            ModeChip("$count", VeilIcons.Play, state.ambientShowCount == count, Modifier.weight(1f)) {
-                                state.chooseAmbientShowCount(count)
-                            }
-                        }
-                    }
-                    SectionLabel("CHANGE BACKGROUND EVERY")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(10, 14, 30, 60).forEach { seconds ->
-                            ModeChip(
-                                "${seconds}s", VeilIcons.Timer, state.ambientSwitchSeconds == seconds, Modifier.weight(1f),
-                            ) { state.chooseAmbientSwitchSeconds(seconds) }
-                        }
-                    }
-                }
-            }
-        }
+        MenuButton(
+            icon = VeilIcons.Sparkle, title = "Veil Ambient",
+            subtitle = "Screensaver, backgrounds & music mode",
+            modifier = Modifier.focusRequester(firstItem),
+            onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
+        )
 
         MenuButton(
             icon = VeilIcons.Grid,
@@ -307,52 +252,11 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             onClick = { state.buttonMappingOpen = true },
         )
 
-        // Which app OK on a Continue Watching card opens (chosen once, remembered)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("PLAY SHOWS WITH")
-            LauncherState.Player.entries.chunked(2).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    pair.forEach { p ->
-                        ModeChip(
-                            if (state.isInstalled(p)) p.title else "${p.title} (not installed)",
-                            VeilIcons.Play, state.player == p, Modifier.weight(1f),
-                        ) { state.choosePlayer(p) }
-                    }
-                    if (pair.size < 2) Spacer(Modifier.weight(1f))
-                }
-            }
-        }
-
-        // Music mode: what Veil Ambient shows while music plays
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("MUSIC MODE")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeChip("Veil", VeilIcons.Note, state.musicStyle == "veil", Modifier.weight(1f)) { state.chooseMusicStyle("veil") }
-                ModeChip(
-                    when {
-                        state.visualizerAllowed -> "Visualizer"
-                        !state.visualizerSupported -> "Visualizer (not supported on this TV)"
-                        else -> "Visualizer (no audio access)"
-                    },
-                    VeilIcons.Wave, state.musicStyle == "viz", Modifier.weight(1f),
-                ) { state.chooseMusicStyle("viz") }
-            }
-            if (state.musicStyle == "veil") {
-                MenuButton(
-                    icon = VeilIcons.Lyrics,
-                    title = "Lyrics: " + if (state.lyricsMusic) "on" else "off",
-                    subtitle = "Synced lyrics next to the album art",
-                    onClick = state::toggleLyricsMusic,
-                )
-            }
-            if (state.musicStyle == "viz" && state.visualizerAllowed) {
-                MenuButton(
-                    icon = VeilIcons.Wave, title = "Visualizer settings", subtitle = "Sensitivity, motion, trails… with live preview",
-                    modifier = Modifier.focusRequester(vizButton),
-                    onClick = { state.vizSettingsOpen = true },
-                )
-            }
-        }
+        MenuButton(
+            icon = VeilIcons.Play, title = "Play shows with", subtitle = state.player.title,
+            modifier = Modifier.focusRequester(playerButton),
+            onClick = { state.settingsPage = LauncherState.SettingsPage.PLAYER },
+        )
 
         // Themes
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -426,6 +330,181 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
         }
 
         Text("Back to close", fontSize = 8.5.sp, color = Veil.Text.copy(alpha = 0.45f))
+    }
+}
+
+private const val TV_LISTINGS_PERMISSION = "android.permission.READ_TV_LISTINGS"
+
+@Composable
+private fun SettingsDialog(title: String, close: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(onDismissRequest = close) {
+        Column(
+            Modifier.width(440.dp).heightIn(max = 480.dp).clip(RoundedCornerShape(22.dp))
+                .background(Veil.Sheet).verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Veil.Text)
+            content()
+        }
+    }
+}
+
+private fun closeSettingsPage(state: LauncherState, returnTo: String) {
+    state.settingsPage = null
+    state.veilMenuOpen = true
+    state.menuReturn = returnTo
+}
+
+@Composable
+internal fun PlayerSettingsDialog(state: LauncherState) {
+    val context = LocalContext.current
+    val activeButton = remember { FocusRequester() }
+    val close = { closeSettingsPage(state, "player") }
+    var permissionHint by remember { mutableStateOf(false) }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            state.startWatchNextUpdates()
+            state.refreshWatching(force = true)
+            close()
+        } else {
+            permissionHint = true
+        }
+    }
+    SettingsDialog("Play shows with", close) {
+        LauncherState.Player.entries.forEach { player ->
+            val installed = state.isInstalled(player)
+            val selected = state.player == player
+            MenuButton(
+                icon = VeilIcons.Play, title = player.title,
+                subtitle = when {
+                    !installed && selected -> "Selected · Not installed"
+                    !installed -> "Not installed"
+                    selected -> "Selected"
+                    else -> "Select"
+                },
+                modifier = if (selected) Modifier.focusRequester(activeButton) else Modifier,
+                onClick = {
+                    state.choosePlayer(player)
+                    if (installed) {
+                        if (player.usesWatchNext &&
+                            context.checkSelfPermission(TV_LISTINGS_PERMISSION) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            request.launch(TV_LISTINGS_PERMISSION)
+                        } else {
+                            close()
+                        }
+                    }
+                },
+            )
+        }
+        if (permissionHint) {
+            Text("Allow TV listings access to show Continue Watching. If your TV skips the prompt, grant READ_TV_LISTINGS to dev.veil.launcher using ADB.",
+                fontSize = 13.sp, color = Veil.Text)
+        }
+        LaunchedEffect(Unit) { activeButton.requestFocus() }
+    }
+}
+
+@Composable
+internal fun AmbientSettingsDialog(state: LauncherState) {
+    val first = remember { FocusRequester() }
+    val vizButton = remember { FocusRequester() }
+    val close = { closeSettingsPage(state, "ambient") }
+    SettingsDialog("Veil Ambient", close) {
+        MenuButton(
+            icon = VeilIcons.Play, title = "Start now", subtitle = "Show Veil Ambient right away",
+            modifier = Modifier.focusRequester(first),
+            onClick = { close(); state.startAmbient() },
+        )
+        MenuButton(
+            icon = VeilIcons.Sparkle,
+            title = "TV screensaver: " + if (state.screensaverIsVeil) "Veil Ambient" else "TV's own",
+            subtitle = "Veil Ambient as the screensaver in any app. Off puts the TV's own screensaver back",
+            onClick = state::toggleScreensaver,
+        )
+        if (state.screensaverIsVeil) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(5, 10, 15).forEach { minutes ->
+                    ModeChip(
+                        "$minutes min", VeilIcons.Sparkle, state.screensaverMinutes == minutes, Modifier.weight(1f),
+                    ) { state.chooseScreensaverMinutes(minutes) }
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            SectionLabel("TRENDING PERIOD")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip("Daily", VeilIcons.Sparkle, state.ambientTrendingWindow == "day", Modifier.weight(1f)) {
+                    state.chooseAmbientTrendingWindow("day")
+                }
+                ModeChip("Weekly", VeilIcons.Sparkle, state.ambientTrendingWindow == "week", Modifier.weight(1f)) {
+                    state.chooseAmbientTrendingWindow("week")
+                }
+            }
+            SectionLabel("MOVIE BACKGROUNDS")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0, 3, 5, 10).forEach { count ->
+                    ModeChip("$count", VeilIcons.Star, state.ambientMovieCount == count, Modifier.weight(1f)) {
+                        state.chooseAmbientMovieCount(count)
+                    }
+                }
+            }
+            SectionLabel("TV SHOW BACKGROUNDS")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0, 3, 5, 10).forEach { count ->
+                    ModeChip("$count", VeilIcons.Play, state.ambientShowCount == count, Modifier.weight(1f)) {
+                        state.chooseAmbientShowCount(count)
+                    }
+                }
+            }
+            SectionLabel("CHANGE BACKGROUND EVERY")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(10, 14, 30, 60).forEach { seconds ->
+                    ModeChip(
+                        "${seconds}s", VeilIcons.Timer, state.ambientSwitchSeconds == seconds, Modifier.weight(1f),
+                    ) { state.chooseAmbientSwitchSeconds(seconds) }
+                }
+            }
+        }
+        // Music mode: what Veil Ambient shows while music plays
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("MUSIC MODE")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip("Veil", VeilIcons.Note, state.musicStyle == "veil", Modifier.weight(1f)) { state.chooseMusicStyle("veil") }
+                ModeChip(
+                    when {
+                        state.visualizerAllowed -> "Visualizer"
+                        !state.visualizerSupported -> "Visualizer (not supported on this TV)"
+                        else -> "Visualizer (no audio access)"
+                    },
+                    VeilIcons.Wave, state.musicStyle == "viz", Modifier.weight(1f),
+                ) { state.chooseMusicStyle("viz") }
+            }
+            if (state.musicStyle == "veil") {
+                MenuButton(
+                    icon = VeilIcons.Lyrics,
+                    title = "Lyrics: " + if (state.lyricsMusic) "on" else "off",
+                    subtitle = "Synced lyrics next to the album art",
+                    onClick = state::toggleLyricsMusic,
+                )
+            }
+            if (state.musicStyle == "viz" && state.visualizerAllowed) {
+                MenuButton(
+                    icon = VeilIcons.Wave, title = "Visualizer settings", subtitle = "Sensitivity, motion, trails… with live preview",
+                    modifier = Modifier.focusRequester(vizButton),
+                    onClick = { state.vizSettingsOpen = true },
+                )
+            }
+        }
+        MenuButton(icon = VeilIcons.Unpin, title = "Done", subtitle = "Return to settings", onClick = close)
+        LaunchedEffect(Unit) {
+            if (state.menuReturn == "viz" && state.musicStyle == "viz" && state.visualizerAllowed) {
+                vizButton.requestFocus()
+                state.menuReturn = null
+            } else {
+                first.requestFocus()
+            }
+        }
     }
 }
 

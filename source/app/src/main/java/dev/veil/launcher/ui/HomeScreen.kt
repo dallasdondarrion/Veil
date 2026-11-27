@@ -133,7 +133,7 @@ fun HomeScreen(state: LauncherState) {
     // the menu's text always sits on a calm surface. Dropdown panels (Veil menu, privacy) leave the top
     // bar alone; full menus (hold menus, pickers) fade it too.
     val dialogOpen = state.sheet != null || state.privacySheet || state.musicSheet || state.watchSheet != null ||
-        state.weatherPicker || state.vizSettingsOpen || state.updateDialog
+        state.settingsPage != null || state.weatherPicker || state.vizSettingsOpen || state.updateDialog
     val panelOpen = state.veilMenuOpen || (state.privacyFocused && state.dnsAvailable)
     // Read only at draw time (graphicsLayer blocks): reading these during composition rebuilt the whole of
     // Home on every frame of the 0.26 s animation whenever a menu opened or closed.

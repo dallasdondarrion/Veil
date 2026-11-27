@@ -102,6 +102,8 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     var sheet by mutableStateOf<AppSheet?>(null)
     var appSwitcherOpen by mutableStateOf(false)
         private set
+    enum class SettingsPage { PLAYER, AMBIENT }
+    var settingsPage by mutableStateOf<SettingsPage?>(null)
     var buttonMappingOpen by mutableStateOf(false)
     var buttonMappingChoosingTarget by mutableStateOf(false)
     var buttonMappingCapture by mutableStateOf(prefs.getBoolean("button_mapping_capture", false))
@@ -899,7 +901,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     /** Music playing: ambient after 30 s idle on Home. Otherwise it only starts from the TV's screensaver or the menu. */
     fun checkIdle() {
         if (ambient || screen != Screen.HOME || sheet != null || privacySheet || musicSheet || weatherPicker ||
-            vizSettingsOpen || updateDialog || watchSheet != null
+            settingsPage != null || vizSettingsOpen || updateDialog || watchSheet != null
         ) return
         val idle = System.currentTimeMillis() - lastInput
         val playing = nowPlaying.track?.playing == true

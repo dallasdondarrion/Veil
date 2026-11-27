@@ -80,6 +80,11 @@ fun VeilApp(state: LauncherState) {
     }
     state.sheet?.let { AppMenu(state, it) }
     if (state.appSwitcherOpen) AppSwitcherDialog(state)
+    when (state.settingsPage) {
+        LauncherState.SettingsPage.PLAYER -> PlayerSettingsDialog(state)
+        LauncherState.SettingsPage.AMBIENT -> if (!state.vizSettingsOpen) AmbientSettingsDialog(state)
+        null -> Unit
+    }
     if (state.buttonMappingOpen) ButtonMappingDialog(state)
     if (state.privacySheet) PrivacyMenu(state)
     if (state.musicSheet) MusicMenu(state)
