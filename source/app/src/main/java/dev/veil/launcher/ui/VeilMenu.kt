@@ -233,11 +233,37 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             )
         }
 
-        // Ambient
-        MenuButton(
-            icon = VeilIcons.Sparkle, title = "Start Veil Ambient", subtitle = "Screensaver & music mode",
-            modifier = Modifier.focusRequester(firstItem), onClick = state::startAmbient,
-        )
+        // Veil Ambient: OK opens its options (start now, use as the TV's screensaver, and how long the TV waits)
+        var ambientOpen by remember { mutableStateOf(false) }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MenuButton(
+                icon = VeilIcons.Sparkle, title = "Veil Ambient",
+                subtitle = if (ambientOpen) "Screensaver & music mode · OK to close"
+                else "Screensaver & music mode · OK for options",
+                modifier = Modifier.focusRequester(firstItem), onClick = { ambientOpen = !ambientOpen },
+            )
+            if (ambientOpen) {
+                MenuButton(
+                    icon = VeilIcons.Play, title = "Start now", subtitle = "Show Veil Ambient right away",
+                    onClick = state::startAmbient,
+                )
+                MenuButton(
+                    icon = VeilIcons.Sparkle,
+                    title = "TV screensaver: " + if (state.screensaverIsVeil) "Veil Ambient" else "TV's own",
+                    subtitle = "Veil Ambient as the screensaver in any app. Off puts the TV's own screensaver back",
+                    onClick = state::toggleScreensaver,
+                )
+                if (state.screensaverIsVeil) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(5, 10, 15).forEach { minutes ->
+                            ModeChip(
+                                "$minutes min", VeilIcons.Sparkle, state.screensaverMinutes == minutes, Modifier.weight(1f),
+                            ) { state.chooseScreensaverMinutes(minutes) }
+                        }
+                    }
+                }
+            }
+        }
 
         // Which app OK on a Continue Watching card opens (chosen once, remembered)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

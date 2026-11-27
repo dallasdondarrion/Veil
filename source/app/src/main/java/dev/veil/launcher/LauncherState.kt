@@ -27,6 +27,7 @@ import dev.veil.launcher.data.NextDnsStats
 import dev.veil.launcher.data.NowPlaying
 import dev.veil.launcher.data.NuvioWatchNext
 import dev.veil.launcher.data.PrivateDns
+import dev.veil.launcher.data.ScreensaverControl
 import dev.veil.launcher.data.Weather
 import dev.veil.launcher.data.Tmdb
 import dev.veil.launcher.data.Trakt
@@ -606,6 +607,38 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     fun startAmbient() { ambient = true }
 
+    // ---- Veil Ambient as the TV's screensaver --------------------------------------------------------
+
+    private val screensaver = ScreensaverControl(context)
+    private var screensaverTick by mutableStateOf(0) // bumped after every change so the menu redraws
+
+    @Suppress("UNUSED_EXPRESSION")
+    val screensaverIsVeil: Boolean get() { screensaverTick; return screensaver.isVeil }
+
+    @Suppress("UNUSED_EXPRESSION")
+    val screensaverMinutes: Int? get() { screensaverTick; return screensaver.timeoutMinutes }
+
+    fun toggleScreensaver() {
+        if (!screensaver.canChooseScreensaver) {
+            showToast("Needs a one-time permission over adb (WRITE_SECURE_SETTINGS)"); return
+        }
+        val turnOn = !screensaver.isVeil
+        // Remember what was selected so switching off puts the TV's own screensaver back.
+        if (turnOn) prefs.edit().putString("screensaver_previous", screensaver.current ?: "").apply()
+        val previous = prefs.getString("screensaver_previous", null)?.takeIf { it.isNotBlank() }
+        val ok = screensaver.setVeil(turnOn, previous)
+        if (!ok) showToast("Couldn't change the TV's screensaver")
+        screensaverTick++
+    }
+
+    fun chooseScreensaverMinutes(minutes: Int) {
+        if (!screensaver.canSetTimeout) {
+            showToast("Allow once over adb: appops set dev.veil.launcher WRITE_SETTINGS allow"); return
+        }
+        if (!screensaver.setTimeoutMinutes(minutes)) showToast("Couldn't change the screensaver time")
+        screensaverTick++
+    }
+
     // ---- Wake-up intro -----------------------------------------------------------------------------
 
     enum class Intro { NONE, ARMED, PLAYING }
@@ -663,14 +696,14 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     fun resetIdle() { lastInput = System.currentTimeMillis(); ambient = false }
 
-    /** Music playing: ambient after 30 s idle on Home. Otherwise after 5 min. */
+    /** Music playing: ambient after 30 s idle on Home. Otherwise it only starts from the TV's screensaver or the menu. */
     fun checkIdle() {
         if (ambient || screen != Screen.HOME || sheet != null || privacySheet || musicSheet || weatherPicker ||
             vizSettingsOpen || updateDialog || watchSheet != null
         ) return
         val idle = System.currentTimeMillis() - lastInput
         val playing = nowPlaying.track?.playing == true
-        if ((playing && idle >= 30_000) || idle >= 5 * 60_000) ambient = true
+        if (playing && idle >= 30_000) ambient = true
     }
 
     fun openNowPlayingApp() {

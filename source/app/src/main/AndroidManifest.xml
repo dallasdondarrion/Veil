@@ -12,6 +12,11 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         xmlns:tools="http://schemas.android.com/tools"
         tools:ignore="ProtectedPermissions" />
+    <!-- Lets the screensaver menu set how long the TV waits before starting it. Allowed over ADB:
+         appops set dev.veil.launcher WRITE_SETTINGS allow -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        xmlns:tools="http://schemas.android.com/tools"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
