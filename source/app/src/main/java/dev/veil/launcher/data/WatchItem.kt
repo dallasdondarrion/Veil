@@ -31,6 +31,7 @@ data class WatchItem(
     val nativeIntentUri: String? = null,
     val nativePackage: String? = null,
     val isNativeWatchNext: Boolean = false,
+    val isTrending: Boolean = false,
 ) {
     val key: String get() = if (isMovie) "m:${imdb ?: tmdb ?: title}" else "s:${traktId ?: serviceId ?: tmdb ?: title}"
 
@@ -43,9 +44,13 @@ data class WatchItem(
 
     /** Hero line: "Season 7 · Episode 13 — Funeral (1)". */
     val heroLine: String
-        get() = if (isMovie) "Movie" else buildString {
-            append("Season $season · Episode $episode")
-            episodeTitle?.let { append(" — ").append(it) }
+        get() = when {
+            isMovie -> "Movie"
+            isTrending -> "TV show"
+            else -> buildString {
+                append("Season $season · Episode $episode")
+                episodeTitle?.let { append(" — ").append(it) }
+            }
         }
 
     /** Minutes still to watch (whole episode for up-next), or null if the runtime is unknown. */

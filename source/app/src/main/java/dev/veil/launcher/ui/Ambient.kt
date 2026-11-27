@@ -80,6 +80,8 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import dev.veil.launcher.data.NowPlaying
 import dev.veil.launcher.data.WatchItem
+import dev.veil.launcher.data.AmbientTrendingFallback
+import dev.veil.launcher.data.VeilCache
 import dev.veil.launcher.data.Weather
 import kotlinx.coroutines.delay
 import java.text.NumberFormat
@@ -115,6 +117,16 @@ fun AmbientScreen(
         if (clean) { delay(5_000); reveal = false }
     }
     val chrome by animateFloatAsState(if (!clean || reveal) 1f else 0f, tween(900), label = "chrome")
+    val hasContinueArtwork = items.any { it.backdrop != null }
+    var trendingFallback by remember { mutableStateOf(VeilCache.ambientTrending) }
+    LaunchedEffect(hasContinueArtwork, track == null) {
+        if (track == null && !hasContinueArtwork) {
+            trendingFallback = AmbientTrendingFallback.load()
+        }
+    }
+    val artworkItems = remember(items, trendingFallback) {
+        items.filter { it.backdrop != null }.ifEmpty { trendingFallback }
+    }
 
     Box(Modifier.fillMaxSize().background(Veil.Bg)) {
         // Switch smoothly between music and artwork faces.
@@ -126,7 +138,7 @@ fun AmbientScreen(
             when {
                 music && track != null && viz -> VisualizerFace(track, chromeAlpha = chrome)
                 music && track != null -> MusicFace(track, lyrics)
-                else -> ArtworkFace(items)
+                else -> ArtworkFace(artworkItems)
             }
         }
 
@@ -437,7 +449,11 @@ private fun ArtworkFace(items: List<WatchItem>) {
             if (it != null) {
                 Column(Modifier.widthIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        if (it.upNext) "UP NEXT" else "CONTINUE",
+                        when {
+                            it.isTrending -> "TRENDING TODAY"
+                            it.upNext -> "UP NEXT"
+                            else -> "CONTINUE"
+                        },
                         fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp, color = Veil.Accent,
                     )
                     TitleOrLogo(it, fontSize = 40.sp, maxLogoHeight = 120.dp)

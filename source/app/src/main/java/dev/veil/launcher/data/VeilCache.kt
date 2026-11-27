@@ -6,6 +6,8 @@ package dev.veil.launcher.data
  */
 object VeilCache {
     @Volatile var items: List<WatchItem> = emptyList()
+    @Volatile var ambientTrending: List<WatchItem> = emptyList()
+    @Volatile var ambientTrendingAt: Long = 0L
     @Volatile var weather: Weather.Now? = null
     @Volatile var blocked: Int? = null
     @Volatile var weeklyBlocked: Int? = null

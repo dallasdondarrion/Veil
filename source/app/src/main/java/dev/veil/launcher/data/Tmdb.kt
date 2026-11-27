@@ -54,6 +54,54 @@ class Tmdb(private val key: String) {
         return art
     }
 
+    /** Top daily trending titles with backdrops, suitable for the Ambient fallback. */
+    fun ambientTrending(): List<WatchItem> =
+        trending(isMovie = true, limit = 5) +
+            trending(
+                isMovie = false,
+                limit = 5,
+                excludedGenres = setOf(TV_NEWS, TV_REALITY, TV_TALK),
+            )
+
+    private fun trending(
+        isMovie: Boolean,
+        limit: Int,
+        excludedGenres: Set<Int> = emptySet(),
+    ): List<WatchItem> {
+        if (!enabled || limit <= 0) return emptyList()
+        val media = if (isMovie) "movie" else "tv"
+        val found = ArrayList<WatchItem>(limit)
+        val gameShowText = Regex("\\b(game show|quiz show|trivia show|late[- ]night)\\b", RegexOption.IGNORE_CASE)
+        for (page in 1..4) {
+            val results = get("trending/$media/day", "language=en-US", "page=$page")
+                ?.optJSONArray("results") ?: break
+            for (i in 0 until results.length()) {
+                val result = results.optJSONObject(i) ?: continue
+                if (result.optBoolean("adult")) continue
+                val genres = result.optJSONArray("genre_ids")
+                if (genres != null && (0 until genres.length()).any { genres.optInt(it) in excludedGenres }) continue
+                val title = result.str(if (isMovie) "title" else "name")?.takeIf { it.isNotBlank() } ?: continue
+                if (!isMovie && gameShowText.containsMatchIn("$title ${result.str("overview").orEmpty()}")) continue
+                val id = result.optInt("id", 0).takeIf { it > 0 } ?: continue
+                val backdropPath = result.str("backdrop_path") ?: continue
+                val posterPath = result.str("poster_path")
+                found += WatchItem(
+                    isMovie = isMovie,
+                    title = title,
+                    traktId = null,
+                    imdb = null,
+                    tmdb = id,
+                    backdrop = "$IMG/original$backdropPath",
+                    thumb = "$IMG/w780$backdropPath",
+                    poster = posterPath?.let { "$IMG/w342$it" },
+                    isTrending = true,
+                )
+                if (found.size == limit) return found
+            }
+        }
+        return found
+    }
+
     /** Minutes for one episode of [season]/[episode] of the show [tvId], or null if TMDB has none. */
     fun episodeRuntime(tvId: Int, season: Int, episode: Int): Int? {
         if (season <= 0 || episode <= 0) return null
@@ -135,5 +183,8 @@ class Tmdb(private val key: String) {
     private companion object {
         const val API = "https://api.themoviedb.org/3"
         const val IMG = "https://image.tmdb.org/t/p"
+        const val TV_NEWS = 10763
+        const val TV_REALITY = 10764
+        const val TV_TALK = 10767
     }
 }

@@ -71,6 +71,7 @@ import coil.request.ImageRequest
 import dev.veil.launcher.AppSheet
 import dev.veil.launcher.LauncherState
 import dev.veil.launcher.Screen
+import dev.veil.launcher.data.AmbientTrendingFallback
 import dev.veil.launcher.data.WatchItem
 import kotlinx.coroutines.delay
 
@@ -78,7 +79,21 @@ private val EDGE = 48.dp
 
 @Composable
 fun HomeScreen(state: LauncherState) {
+    var trendingFallback by remember { mutableStateOf(dev.veil.launcher.data.VeilCache.ambientTrending) }
+    var trendingIndex by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val hasContinueWatching = state.items.isNotEmpty()
+    LaunchedEffect(hasContinueWatching) {
+        if (!hasContinueWatching) trendingFallback = AmbientTrendingFallback.load()
+    }
+    LaunchedEffect(hasContinueWatching, trendingFallback) {
+        trendingIndex = 0
+        while (!hasContinueWatching && trendingFallback.size > 1) {
+            delay(14_000)
+            trendingIndex = (trendingIndex + 1) % trendingFallback.size
+        }
+    }
     val hero = state.focused ?: state.items.firstOrNull()
+    val backgroundItem = hero ?: trendingFallback.getOrNull(trendingIndex)
     val firstFocus = remember { FocusRequester() }
     val requesters = remember { HashMap<String, FocusRequester>() }
     val focusKey: (String) -> FocusRequester = { k -> requesters.getOrPut(k) { FocusRequester() } }
@@ -95,7 +110,7 @@ fun HomeScreen(state: LauncherState) {
 
     // Colour and frost come from the small card image (the same picture as the 4K backdrop): both are
     // shrunk to ~100-200 px anyway, so decoding the 4K original three times per card change was wasted.
-    val smallArt = hero?.thumb ?: hero?.backdrop
+    val smallArt = backgroundItem?.thumb ?: backgroundItem?.backdrop
     ArtTintEffect(smallArt, active = !state.veilMenuOpen)
 
     // Check title logos ahead of time, so the hero can show them without a text-to-logo swap.
@@ -125,7 +140,7 @@ fun HomeScreen(state: LauncherState) {
     Box(Modifier.fillMaxSize().background(Veil.Bg)) {
         // The drift also holds still while Veil Ambient covers Home (nobody can see it, and it cost frames).
         // (Lite mode: no drift at all; on slow TVs redrawing the full-screen artwork costs frames.)
-        Backdrop(hero?.backdrop, paused = frosted || state.ambient || dev.veil.launcher.BuildConfig.LITE_MODE)
+        Backdrop(backgroundItem?.backdrop, paused = frosted || state.ambient || dev.veil.launcher.BuildConfig.LITE_MODE)
         // Frost: the pre-blurred artwork fades in over the real one (cheap; a live blur is too slow here).
         val fi = frostImg
         if (fi != null) {
@@ -239,6 +254,7 @@ private fun HeroBody(hero: WatchItem?, state: LauncherState) {
         }
         Text(
             when {
+                hero.isTrending -> "TRENDING TODAY"
                 hero.isNew -> "NEW EPISODE"
                 hero.upNext -> "UP NEXT"
                 else -> "CONTINUE"
