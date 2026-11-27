@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -46,6 +47,7 @@ enum class Screen { HOME, DRAWER, CONNECT }
 
 /** The hold-OK menu: which app it is for, and whether it was opened from the Home row. */
 data class AppSheet(val app: AppEntry, val fromHome: Boolean)
+data class ButtonMapping(val keyCode: Int, val target: String)
 
 /**
  * @Stable: everything the UI reads from here is Compose state (or never changes, like permissions), so
@@ -98,6 +100,21 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     var editingClientId by mutableStateOf(false)
         private set
     var sheet by mutableStateOf<AppSheet?>(null)
+    var appSwitcherOpen by mutableStateOf(false)
+        private set
+    var buttonMappingOpen by mutableStateOf(false)
+    var buttonMappingChoosingTarget by mutableStateOf(false)
+    var buttonMappingCapture by mutableStateOf(prefs.getBoolean("button_mapping_capture", false))
+        private set
+    var buttonMappings by mutableStateOf(loadButtonMappings())
+        private set
+    private var pendingButtonKeyCode: Int? = null
+    init {
+        if (prefs.getString("button_mappings", null) == null && buttonMappings.isNotEmpty()) saveButtonMappings()
+    }
+    var recentAppPackages by mutableStateOf(loadRecentAppPackages())
+        private set
+    val recentApps: List<AppEntry> get() = recentAppPackages.mapNotNull { pkg -> apps.firstOrNull { it.pkg == pkg } }
 
     /** Ordered package names pinned to the Home row. */
     var pins by mutableStateOf(loadPins())
@@ -246,6 +263,116 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     }
 
     private var lastAppsLoad = 0L
+    private fun loadRecentAppPackages(): List<String> = prefs.getString("recent_app_packages", "").orEmpty()
+        .split('|').filter { it.isNotBlank() }.distinct().take(12)
+
+    private fun saveRecentAppPackage(pkg: String) {
+        if (pkg == context.packageName) return
+        recentAppPackages = (listOf(pkg) + recentAppPackages.filterNot { it == pkg }).take(12)
+        prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
+    }
+
+    fun openAppSwitcher() {
+        recentAppPackages = loadRecentAppPackages()
+        appSwitcherOpen = true
+        refreshApps(force = true)
+    }
+
+    fun closeAppSwitcher() { appSwitcherOpen = false }
+
+    fun closeButtonMapping() {
+        cancelButtonMappingCapture()
+        buttonMappingOpen = false
+    }
+
+    private fun loadButtonMappings(): List<ButtonMapping> {
+        val stored = prefs.getString("button_mappings", null)
+        if (stored != null) return runCatching {
+            val array = org.json.JSONArray(stored)
+            (0 until array.length()).mapNotNull { i ->
+                val item = array.optJSONObject(i) ?: return@mapNotNull null
+                val key = item.optInt("key", KeyEvent.KEYCODE_UNKNOWN)
+                val target = item.optString("target").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                if (key == KeyEvent.KEYCODE_UNKNOWN || (target != "switcher" && !target.startsWith("app:"))) null
+                else ButtonMapping(key, target)
+            }
+        }.getOrDefault(emptyList())
+        val legacyKey = prefs.getInt("app_switcher_key", KeyEvent.KEYCODE_UNKNOWN)
+        return if (legacyKey == KeyEvent.KEYCODE_UNKNOWN) emptyList()
+        else listOf(ButtonMapping(legacyKey, "switcher"))
+    }
+
+    private fun saveButtonMappings() {
+        val array = org.json.JSONArray()
+        buttonMappings.forEach { mapping ->
+            array.put(org.json.JSONObject().put("key", mapping.keyCode).put("target", mapping.target))
+        }
+        prefs.edit().putString("button_mappings", array.toString()).apply()
+    }
+
+    fun beginButtonMappingCapture() {
+        pendingButtonKeyCode = null
+        buttonMappingChoosingTarget = false
+        buttonMappingCapture = true
+        prefs.edit().putBoolean("button_mapping_capture", true).apply()
+        showToast("Press the remote button to map")
+    }
+
+    fun cancelButtonMappingCapture() {
+        buttonMappingCapture = false
+        buttonMappingChoosingTarget = false
+        pendingButtonKeyCode = null
+        prefs.edit().putBoolean("button_mapping_capture", false).apply()
+    }
+
+    fun completeButtonMapping(target: String) {
+        val keyCode = pendingButtonKeyCode ?: return
+        buttonMappings = (buttonMappings.filterNot { it.keyCode == keyCode } + ButtonMapping(keyCode, target))
+        pendingButtonKeyCode = null
+        buttonMappingChoosingTarget = false
+        saveButtonMappings()
+        showToast("Mapped ${KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_")} to ${mappingTargetLabel(target)}")
+    }
+
+    fun removeButtonMapping(keyCode: Int) {
+        buttonMappings = buttonMappings.filterNot { it.keyCode == keyCode }
+        saveButtonMappings()
+    }
+
+    fun mappingTargetLabel(target: String): String = when {
+        target == "switcher" -> "Recent apps"
+        target.startsWith("app:") -> apps.firstOrNull { it.pkg == target.removePrefix("app:") }?.label
+            ?: target.removePrefix("app:")
+        else -> target
+    }
+
+    fun receiveCapturedButton(keyCode: Int) {
+        captureButtonMapping(keyCode)
+    }
+
+    private fun captureButtonMapping(keyCode: Int) {
+        if (keyCode in setOf(
+                KeyEvent.KEYCODE_UNKNOWN, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_BACK,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE,
+                KeyEvent.KEYCODE_POWER,
+            )) {
+            showToast("Choose a dedicated remote shortcut button")
+            return
+        }
+        pendingButtonKeyCode = keyCode
+        buttonMappingCapture = false
+        buttonMappingChoosingTarget = true
+        prefs.edit().putBoolean("button_mapping_capture", false).apply()
+        showToast("Button captured. Choose what it opens")
+    }
+
+    fun dismissRecentApp(pkg: String) {
+        recentAppPackages = recentAppPackages.filterNot { it == pkg }
+        prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
+    }
+
     fun refreshApps(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (!force && now - lastAppsLoad < 60_000) return
@@ -734,6 +861,21 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     /** Called for every key the activity receives. Returns true if the key should be swallowed. */
     fun onKey(keyCode: Int, down: Boolean): Boolean {
         lastInput = System.currentTimeMillis()
+        if (buttonMappingCapture) {
+            if (down) {
+                captureButtonMapping(keyCode)
+                swallowKey = keyCode
+            }
+            if (!down && swallowKey == keyCode) { swallowKey = null; return true }
+            return true
+        }
+        if (down) buttonMappings.firstOrNull { it.keyCode == keyCode }?.let { mapping ->
+            when {
+                mapping.target == "switcher" -> openAppSwitcher()
+                mapping.target.startsWith("app:") -> apps.firstOrNull { it.pkg == mapping.target.removePrefix("app:") }?.let(::launch)
+            }
+            return true
+        }
         if (intro == Intro.ARMED) intro = Intro.NONE         // never leave a blank screen up
         if (down && intro == Intro.PLAYING) {               // any button skips the intro
             intro = Intro.NONE
@@ -898,7 +1040,11 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     // ---- Launching ----------------------------------------------------------------------------
 
-    fun launch(app: AppEntry) = start(Intent(app.launch).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    fun launch(app: AppEntry) {
+        saveRecentAppPackage(app.pkg)
+        appSwitcherOpen = false
+        start(Intent(app.launch).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 
     fun openSettings() = start(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 

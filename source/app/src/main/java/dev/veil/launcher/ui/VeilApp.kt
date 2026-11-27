@@ -10,9 +10,24 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +42,13 @@ import dev.veil.launcher.data.WatchItem
 import dev.veil.launcher.AppSheet
 import dev.veil.launcher.LauncherState
 import dev.veil.launcher.Screen
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
 
 @Composable
 fun VeilApp(state: LauncherState) {
@@ -57,6 +79,8 @@ fun VeilApp(state: LauncherState) {
         }
     }
     state.sheet?.let { AppMenu(state, it) }
+    if (state.appSwitcherOpen) AppSwitcherDialog(state)
+    if (state.buttonMappingOpen) ButtonMappingDialog(state)
     if (state.privacySheet) PrivacyMenu(state)
     if (state.musicSheet) MusicMenu(state)
     state.watchSheet?.let { WatchMenu(state, it) }
@@ -176,4 +200,93 @@ private fun AppMenu(state: LauncherState, sheet: AppSheet) {
         }
     }
     ActionSheet(title = app.label, actions = actions, onDismiss = { state.sheet = null })
+}
+
+@Composable
+private fun AppSwitcherDialog(state: LauncherState) {
+    Dialog(onDismissRequest = state::closeAppSwitcher) {
+        Column(
+            Modifier.clip(RoundedCornerShape(22.dp)).background(Veil.Sheet).padding(horizontal = 24.dp, vertical = 20.dp),
+        ) {
+            Text("Recent apps", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Veil.Text)
+            Text("Choose an app to return to it", fontSize = 12.sp, color = Veil.Text.copy(alpha = 0.7f), modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
+            val recent = state.recentApps
+            if (recent.isEmpty()) {
+                Text("Recently used apps will appear here.", fontSize = 14.sp, color = Veil.Text.copy(alpha = 0.8f))
+            } else {
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    recent.forEachIndexed { index, app ->
+                        if (index > 0) Spacer(Modifier.width(8.dp))
+                        AppPill(
+                            app = app,
+                            onClick = { state.launch(app) },
+                            onLongClick = null,
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedContainerColor = Veil.GlassStrong,
+                            focusedContentColor = Veil.Text,
+                            modifier = Modifier.onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                                    state.dismissRecentApp(app.pkg)
+                                    true
+                                } else false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun ButtonMappingDialog(state: LauncherState) {
+    Dialog(onDismissRequest = state::closeButtonMapping) {
+        Column(
+            Modifier.widthIn(max = 620.dp).heightIn(max = 500.dp).clip(RoundedCornerShape(22.dp))
+                .background(Veil.Sheet).verticalScroll(rememberScrollState()).padding(24.dp),
+        ) {
+            Text("Button Mapping", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Veil.Text)
+            Text(
+                "Assign a remote shortcut to Recent Apps or any installed app. The Home helper must be enabled for mappings to work outside Veil.",
+                fontSize = 12.sp, color = Veil.Text.copy(alpha = 0.72f), modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+            )
+            when {
+                state.buttonMappingCapture -> {
+                    Text("Press the remote button you want to map.", fontSize = 16.sp, color = Veil.Accent)
+                    MenuButton(icon = VeilIcons.Unpin, title = "Cancel mapping", subtitle = "Return to the mappings list", onClick = state::cancelButtonMappingCapture)
+                }
+                state.buttonMappingChoosingTarget -> {
+                    MenuButton(
+                        icon = VeilIcons.Grid, title = "Recent Apps", subtitle = "Open Veil’s recent apps row",
+                        onClick = { state.completeButtonMapping("switcher") },
+                    )
+                    Text("INSTALLED APPS", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = Veil.Text.copy(alpha = 0.55f), modifier = Modifier.padding(top = 12.dp, bottom = 5.dp))
+                    state.apps.forEach { app ->
+                        MenuButton(
+                            icon = VeilIcons.Play, title = app.label, subtitle = "Press a remote button to map this app",
+                            onClick = { state.completeButtonMapping("app:${app.pkg}") },
+                        )
+                    }
+                    MenuButton(icon = VeilIcons.Unpin, title = "Back", subtitle = "Return to mapped buttons", onClick = state::cancelButtonMappingCapture)
+                }
+                else -> {
+                    if (state.buttonMappings.isEmpty()) {
+                        Text("No buttons mapped yet.", fontSize = 14.sp, color = Veil.Text.copy(alpha = 0.75f), modifier = Modifier.padding(bottom = 10.dp))
+                    } else {
+                        state.buttonMappings.forEach { mapping ->
+                            MenuButton(
+                                icon = VeilIcons.Unpin,
+                                title = "${android.view.KeyEvent.keyCodeToString(mapping.keyCode).removePrefix("KEYCODE_")}  →  ${state.mappingTargetLabel(mapping.target)}",
+                                subtitle = "Select to remove this mapping",
+                                onClick = { state.removeButtonMapping(mapping.keyCode) },
+                            )
+                        }
+                    }
+                    MenuButton(icon = VeilIcons.Grid, title = "Add button mapping", subtitle = "Press a remote button, then choose what it opens", onClick = state::beginButtonMappingCapture)
+                    MenuButton(icon = VeilIcons.Unpin, title = "Done", subtitle = "Close Button Mapping", onClick = state::closeButtonMapping)
+                }
+            }
+        }
+    }
 }

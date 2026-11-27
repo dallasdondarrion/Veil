@@ -21,6 +21,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private lateinit var state: LauncherState
 
+    companion object {
+        const val EXTRA_SHOW_APP_SWITCHER = "dev.veil.launcher.SHOW_APP_SWITCHER"
+        const val EXTRA_CAPTURED_BUTTON = "dev.veil.launcher.CAPTURED_BUTTON"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemeState.load(applicationContext)
@@ -37,8 +42,10 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.clearAndSetSemantics { }) { VeilApp(state) }
             }
         }
+        if (intent.hasExtra(EXTRA_CAPTURED_BUTTON)) state.receiveCapturedButton(intent.getIntExtra(EXTRA_CAPTURED_BUTTON, KeyEvent.KEYCODE_UNKNOWN))
+        else if (intent.getBooleanExtra(EXTRA_SHOW_APP_SWITCHER, false)) state.openAppSwitcher()
         // Fresh start right after the TV boots: play the intro.
-        if (android.os.SystemClock.elapsedRealtime() < 10 * 60_000L) state.playIntro()
+        if (!intent.hasExtra(EXTRA_CAPTURED_BUTTON) && !intent.getBooleanExtra(EXTRA_SHOW_APP_SWITCHER, false) && android.os.SystemClock.elapsedRealtime() < 10 * 60_000L) state.playIntro()
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         })
@@ -109,7 +116,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        state.onHomePressed()
+        when {
+            intent.hasExtra(EXTRA_CAPTURED_BUTTON) -> state.receiveCapturedButton(intent.getIntExtra(EXTRA_CAPTURED_BUTTON, KeyEvent.KEYCODE_UNKNOWN))
+            intent.getBooleanExtra(EXTRA_SHOW_APP_SWITCHER, false) -> state.openAppSwitcher()
+            else -> state.onHomePressed()
+        }
         checkFocusOnWindowFocus = true
     }
 

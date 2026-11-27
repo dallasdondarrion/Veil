@@ -486,6 +486,9 @@ fun Pill(
     padding: PaddingValues = PaddingValues(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
     /** Pitch of the "move" tick: cards lower, top bar higher, so you can hear where you are. */
     soundPitch: Float = 1f,
+    containerColor: Color = Veil.Glass,
+    focusedContainerColor: Color = Veil.Text,
+    focusedContentColor: Color = Veil.Ink,
     content: @Composable RowScope.() -> Unit,
 ) {
     val glass = rememberGlassMotion()
@@ -495,8 +498,8 @@ fun Pill(
         modifier = modifier.focusSound(soundPitch).glassTilt(glass),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Veil.Glass, contentColor = Veil.Text,
-            focusedContainerColor = Veil.Text, focusedContentColor = Veil.Ink,
+            containerColor = containerColor, contentColor = Veil.Text,
+            focusedContainerColor = focusedContainerColor, focusedContentColor = focusedContentColor,
             pressedContainerColor = Veil.Text.copy(alpha = 0.85f), pressedContentColor = Veil.Ink,
         ),
         border = ClickableSurfaceDefaults.border(
@@ -522,8 +525,20 @@ fun Pill(
 fun dimColor() = LocalContentColor.current.copy(alpha = 0.72f)
 
 @Composable
-fun AppPill(app: AppEntry, onClick: () -> Unit, onLongClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    Pill(onClick = onClick, onLongClick = onLongClick, modifier = modifier) {
+fun AppPill(
+    app: AppEntry,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    containerColor: Color = Veil.Glass,
+    focusedContainerColor: Color = Veil.Text,
+    focusedContentColor: Color = Veil.Ink,
+) {
+    Pill(
+        onClick = onClick, onLongClick = onLongClick, modifier = modifier,
+        containerColor = containerColor, focusedContainerColor = focusedContainerColor,
+        focusedContentColor = focusedContentColor,
+    ) {
         val icon = app.icon
         if (icon != null) {
             Image(icon, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(30.dp).clip(CircleShape))

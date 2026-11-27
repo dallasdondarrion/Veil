@@ -300,6 +300,13 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             }
         }
 
+        MenuButton(
+            icon = VeilIcons.Grid,
+            title = "Button Mapping",
+            subtitle = "Map remote buttons to Recent Apps or an installed app",
+            onClick = { state.buttonMappingOpen = true },
+        )
+
         // Which app OK on a Continue Watching card opens (chosen once, remembered)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("PLAY SHOWS WITH")
@@ -438,7 +445,7 @@ private fun SectionLabel(text: String) =
     Text(text, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = Veil.Text.copy(alpha = 0.55f))
 
 @Composable
-private fun MenuButton(
+internal fun MenuButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,

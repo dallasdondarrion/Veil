@@ -10,9 +10,18 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 
 /**
  * Makes the remote's Home button open Veil, and keeps Google's home screen from staying up after the TV
@@ -22,6 +31,12 @@ import android.view.accessibility.AccessibilityEvent
 class HomeButtonService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
+    private var captureKeyRelease: Int? = null
+    private var activeMappedTarget: String? = null
+    private var recentAppsOverlay: LinearLayout? = null
+    private var recentOverlayPackages: List<String> = emptyList()
+    private var recentOverlayTiles: List<View> = emptyList()
+    private var recentOverlaySelected = 0
 
     /** True while the last real screen to come to the front was the TV's own home screen (or another launcher). */
     private var stockHomeInFront = false
@@ -56,10 +71,205 @@ class HomeButtonService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
-        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) goHome()
+        if (recentAppsOverlay != null) return handleRecentOverlayKey(event)
+        val prefs = getSharedPreferences("veil", MODE_PRIVATE)
+        // Consume the capture press so TV shortcuts (such as YouTube) cannot open their default app/store page.
+        if (prefs.getBoolean("button_mapping_capture", false)) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (event.repeatCount == 0) captureKeyRelease = event.keyCode
+                    return true
+                }
+                KeyEvent.ACTION_UP -> {
+                    if (captureKeyRelease == event.keyCode && !event.isCanceled) {
+                        captureKeyRelease = null
+                        prefs.edit().putBoolean("button_mapping_capture", false).apply()
+                        try {
+                            startActivity(
+                                Intent(this, MainActivity::class.java)
+                                    .putExtra(MainActivity.EXTRA_CAPTURED_BUTTON, event.keyCode)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                            )
+                        } catch (_: Exception) { }
+                    }
+                    return true
+                }
+                else -> return true
+            }
+        }
+        if (captureKeyRelease == event.keyCode && event.action == KeyEvent.ACTION_UP) {
+            captureKeyRelease = null
+            return true
+        }
+        if (event.keyCode == KeyEvent.KEYCODE_HOME) {
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) goHome()
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            activeMappedTarget = runCatching {
+                val mappings = org.json.JSONArray(prefs.getString("button_mappings", "[]"))
+                (0 until mappings.length()).firstNotNullOfOrNull { i ->
+                    val item = mappings.optJSONObject(i) ?: return@firstNotNullOfOrNull null
+                    item.optString("target").takeIf { item.optInt("key", KeyEvent.KEYCODE_UNKNOWN) == event.keyCode }
+                }
+            }.getOrNull()
+        }
+        val target = activeMappedTarget
+        if (target == null) return false
+        if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) {
+            try {
+                if (target == "switcher") {
+                    showRecentAppsOverlay()
+                } else if (target.startsWith("app:")) {
+                    val pkg = target.removePrefix("app:")
+                    val launch = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                        ?: packageManager.getLaunchIntentForPackage(pkg)
+                    launch?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let(::startActivity)
+                }
+            } catch (_: Exception) { }
+            activeMappedTarget = null
+        }
         return true
     }
+
+    /** Recent apps opens as an accessibility overlay, so the current app stays on screen underneath it. */
+    private fun showRecentAppsOverlay() {
+        dismissRecentAppsOverlay()
+        val prefs = getSharedPreferences("veil", MODE_PRIVATE)
+        val packages = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() }.distinct()
+        val entries = packages.mapNotNull { pkg ->
+            val intent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                ?: packageManager.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
+            val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+                .getOrDefault(pkg)
+            Triple(pkg, label, intent)
+        }.take(6)
+        if (entries.isEmpty()) return
+        recentOverlayPackages = entries.map { it.first }
+        recentOverlaySelected = 0
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(14))
+            background = rounded(Color.argb(244, 25, 29, 37), dp(24))
+            addView(TextView(this@HomeButtonService).apply {
+                text = "Recent apps"
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(8))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            val row = LinearLayout(this@HomeButtonService).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+            val tiles = entries.mapIndexed { index, (pkg, label, intent) ->
+                LinearLayout(this@HomeButtonService).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(7), dp(8), dp(7), dp(7))
+                    background = tileBackground(index == recentOverlaySelected)
+                    addView(ImageView(this@HomeButtonService).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        setImageDrawable(runCatching { packageManager.getApplicationIcon(pkg) }.getOrNull())
+                    }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                    addView(TextView(this@HomeButtonService).apply {
+                        text = label
+                        setTextColor(Color.WHITE)
+                        textSize = 10.5f
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        gravity = Gravity.CENTER
+                        setPadding(0, dp(5), 0, 0)
+                    }, LinearLayout.LayoutParams(dp(90), LinearLayout.LayoutParams.WRAP_CONTENT))
+                    setOnClickListener { launchRecentApp(intent) }
+                }.also { tile ->
+                    val lp = LinearLayout.LayoutParams(dp(106), dp(88))
+                    lp.marginStart = dp(3); lp.marginEnd = dp(3)
+                    row.addView(tile, lp)
+                }
+            }
+            recentOverlayTiles = tiles
+            addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        recentAppsOverlay = root
+        try {
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                y = dp(48)
+                title = "Veil Recent Apps"
+            }
+            (getSystemService(WINDOW_SERVICE) as WindowManager).addView(root, params)
+        } catch (e: Exception) {
+            Log.w("VeilHome", "Could not show recent-app overlay", e)
+            recentAppsOverlay = null
+            recentOverlayTiles = emptyList()
+        }
+    }
+
+    private fun handleRecentOverlayKey(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) return true
+        if (event.action != KeyEvent.ACTION_DOWN) return true
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_BACK -> dismissRecentAppsOverlay()
+            KeyEvent.KEYCODE_HOME -> { dismissRecentAppsOverlay(); goHome() }
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (event.repeatCount == 0) moveRecentSelection(-1)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (event.repeatCount == 0) moveRecentSelection(1)
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> if (event.repeatCount == 0) {
+                val pkg = recentOverlayPackages.getOrNull(recentOverlaySelected)
+                val intent = pkg?.let { packageManager.getLeanbackLaunchIntentForPackage(it) ?: packageManager.getLaunchIntentForPackage(it) }
+                if (pkg != null && intent != null) launchRecentApp(intent) else dismissRecentAppsOverlay()
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> if (event.repeatCount == 0) {
+                recentOverlayPackages.getOrNull(recentOverlaySelected)?.let(::removeFromRecentList)
+                showRecentAppsOverlay()
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun moveRecentSelection(delta: Int) {
+        if (recentOverlayPackages.isEmpty()) return
+        recentOverlaySelected = (recentOverlaySelected + delta).mod(recentOverlayPackages.size)
+        recentOverlayTiles.forEachIndexed { index, tile -> tile.background = tileBackground(index == recentOverlaySelected) }
+    }
+
+    private fun removeFromRecentList(pkg: String) {
+        val prefs = getSharedPreferences("veil", MODE_PRIVATE)
+        val recent = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() && it != pkg }
+        prefs.edit().putString("recent_app_packages", recent.joinToString("|")).apply()
+    }
+
+    private fun launchRecentApp(intent: Intent) {
+        dismissRecentAppsOverlay()
+        try { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
+    }
+
+    private fun dismissRecentAppsOverlay() {
+        val view = recentAppsOverlay ?: return
+        runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(view) }
+        recentAppsOverlay = null
+        recentOverlayPackages = emptyList()
+        recentOverlayTiles = emptyList()
+        recentOverlaySelected = 0
+    }
+
+
+    private fun tileBackground(selected: Boolean) = rounded(
+        if (selected) Color.argb(255, 74, 87, 103) else Color.TRANSPARENT,
+        dp(16),
+    ).apply { if (selected) setStroke(dp(2), Color.argb(240, 213, 226, 244)) }
+
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = radius.toFloat()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         // If Google's home screen comes up (after boot, wake or any system event), replace it.
@@ -72,6 +282,11 @@ class HomeButtonService : AccessibilityService() {
         if (!transient) {
             sawWindow = true
             stockHomeInFront = stockHome
+            if (pkg != packageName && !stockHome) {
+                val prefs = getSharedPreferences("veil", MODE_PRIVATE)
+                val recent = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() }
+                prefs.edit().putString("recent_app_packages", (listOf(pkg) + recent.filterNot { it == pkg }).take(12).joinToString("|")).apply()
+            }
             if (pkg == packageName) handler.removeCallbacks(reclaimCheck) // Veil is up; nothing left to reclaim.
         }
         if (stockHome) goHome()
@@ -90,6 +305,7 @@ class HomeButtonService : AccessibilityService() {
     }
 
     private fun stopWatching() {
+        dismissRecentAppsOverlay()
         handler.removeCallbacks(reclaimCheck)
         runCatching { unregisterReceiver(wakeReceiver) }
     }
