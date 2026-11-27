@@ -260,7 +260,7 @@ private fun ButtonMappingDialog(state: LauncherState) {
             when {
                 state.buttonMappingCapture -> {
                     Text("Press the remote button you want to map.", fontSize = 16.sp, color = Veil.Accent)
-                    MenuButton(icon = VeilIcons.Unpin, title = "Cancel mapping", subtitle = "Return to the mappings list", onClick = state::cancelButtonMappingCapture)
+                    MenuButton(icon = VeilIcons.Unpin, title = "Cancel Mapping", subtitle = "Return to the mappings list", onClick = state::cancelButtonMappingCapture)
                 }
                 state.buttonMappingChoosingTarget -> {
                     MenuButton(
@@ -289,7 +289,7 @@ private fun ButtonMappingDialog(state: LauncherState) {
                             )
                         }
                     }
-                    MenuButton(icon = VeilIcons.Grid, title = "Add button mapping", subtitle = "Press a remote button, then choose what it opens", onClick = state::beginButtonMappingCapture)
+                    MenuButton(icon = VeilIcons.Grid, title = "Add Button Mapping", subtitle = "Press a remote button, then choose what it opens", onClick = state::beginButtonMappingCapture)
                     MenuButton(icon = VeilIcons.Unpin, title = "Done", subtitle = "Close Button Mapping", onClick = state::closeButtonMapping)
                 }
             }

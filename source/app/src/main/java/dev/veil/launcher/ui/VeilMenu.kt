@@ -185,7 +185,6 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
     val current = ThemeState.current
     val ambientButton = remember { FocusRequester() }
     val tmdbButton = remember { FocusRequester() }
-    val playerButton = remember { FocusRequester() }
     val weatherButton = remember { FocusRequester() }
     val updateButton = remember { FocusRequester() }
     // The panel stays built between opens; start each open scrolled to the top, as before.
@@ -195,7 +194,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
     LaunchedEffect(state.menuReturn) {
         val target = when (state.menuReturn) {
             "tmdb" -> tmdbButton
-            "player" -> playerButton
+            "player" -> firstItem
             "ambient" -> ambientButton
             "weather" -> weatherButton
             "update" -> updateButton
@@ -230,30 +229,14 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             Text("Private by design · no ads · no tracking", fontSize = 9.sp, color = Veil.Text.copy(alpha = 0.6f))
         }
 
-        // A newer Veil on GitHub: a short row; OK opens the details window, where you decide.
-        state.availableUpdate?.let { u ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("PLAYBACK")
             MenuButton(
-                icon = VeilIcons.Sparkle,
-                title = "Update available",
-                subtitle = "${ago(u.time).replaceFirstChar { it.uppercase() }} · OK for details",
-                modifier = Modifier.focusRequester(updateButton),
-                onClick = { state.updateDialog = true },
+                icon = VeilIcons.Play, title = "Play Shows with", subtitle = state.player.title,
+                modifier = Modifier.focusRequester(firstItem),
+                onClick = { state.settingsPage = LauncherState.SettingsPage.PLAYER },
             )
         }
-
-        MenuButton(
-            icon = VeilIcons.Grid,
-            title = "Button Mapping",
-            modifier = Modifier.focusRequester(firstItem),
-            subtitle = "Map remote buttons to Recent Apps or an installed app",
-            onClick = { state.buttonMappingOpen = true },
-        )
-
-        MenuButton(
-            icon = VeilIcons.Play, title = "Play shows with", subtitle = state.player.title,
-            modifier = Modifier.focusRequester(playerButton),
-            onClick = { state.settingsPage = LauncherState.SettingsPage.PLAYER },
-        )
 
         // Themes
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -279,7 +262,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             }
             MenuButton(
                 icon = VeilIcons.Sparkle,
-                title = "Colours from artwork: " + if (state.artColors) "on" else "off",
+                title = "Colours from Artwork: " + if (state.artColors) "on" else "off",
                 subtitle = "The accent glows in the colours of the show you're on",
                 onClick = state::toggleArtColors,
             )
@@ -291,7 +274,7 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             val w = state.weather
             MenuButton(
                 icon = if (w != null) weatherIcon(w) else VeilIcons.Pin2,
-                title = state.weatherPlace ?: "No location set",
+                title = state.weatherPlace ?: "No Location Set",
                 subtitle = (w?.let { "${it.tempC}° now · " } ?: "") + "Change location",
                 modifier = Modifier.focusRequester(weatherButton),
                 onClick = { state.weatherPicker = true },
@@ -303,13 +286,13 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             SectionLabel("SOUNDS & SEASONAL")
             MenuButton(
                 icon = VeilIcons.Note,
-                title = "Interface sounds: " + if (state.sounds) "on" else "off",
+                title = "Interface Sounds: " + if (state.sounds) "on" else "off",
                 subtitle = "Soft ticks and chimes as you move around",
                 onClick = state::toggleSounds,
             )
             MenuButton(
                 icon = if (Seasons.isWinter()) VeilIcons.Snowflake else VeilIcons.Sparkle,
-                title = "Seasonal touches: " + if (state.seasonal) "on" else "off",
+                title = "Seasonal Touches: " + if (state.seasonal) "on" else "off",
                 subtitle = "Snow in December, New Year countdown… in Ambient",
                 onClick = state::toggleSeasonal,
             )
@@ -324,19 +307,39 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
                 onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
             )
             MenuButton(
-                icon = VeilIcons.Play, title = "TMDB API key",
+                icon = VeilIcons.Play, title = "TMDB API Key",
                 subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
                 modifier = Modifier.focusRequester(tmdbButton),
                 onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
             )
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("REMOTE CONTROLS")
+            MenuButton(
+                icon = VeilIcons.Grid,
+                title = "Button Mapping",
+                subtitle = "Map remote buttons to Recent Apps or an installed app",
+                onClick = { state.buttonMappingOpen = true },
+            )
+        }
+
         // Update check (one small request a day to GitHub's public API)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("UPDATES")
+            // A newer Veil on GitHub: a short row; OK opens the details window, where you decide.
+            state.availableUpdate?.let { u ->
+                MenuButton(
+                    icon = VeilIcons.Sparkle,
+                    title = "Update Available",
+                    subtitle = "${ago(u.time).replaceFirstChar { it.uppercase() }} · OK for details",
+                    modifier = Modifier.focusRequester(updateButton),
+                    onClick = { state.updateDialog = true },
+                )
+            }
             MenuButton(
                 icon = VeilIcons.Sparkle,
-                title = "Check for updates: " + if (state.updateCheck) "on" else "off",
+                title = "Check for Updates: " + if (state.updateCheck) "on" else "off",
                 subtitle = "Once a day, asks GitHub if a newer Veil is out. Nothing about you is sent",
                 onClick = state::toggleUpdateCheck,
             )
@@ -380,7 +383,7 @@ internal fun TmdbSettingsDialog(state: LauncherState) {
     var error by remember { mutableStateOf<String?>(null) }
     val close = { closeSettingsPage(state, "tmdb") }
     val field = remember { FocusRequester() }
-    SettingsDialog("TMDB API key", error, close) {
+    SettingsDialog("TMDB API Key", error, close) {
         Text("Enter a TMDB v3 API key or API Read Access Token. Veil saves it on this device.",
             fontSize = 13.sp, color = Veil.Text)
         BasicTextField(
@@ -413,7 +416,7 @@ internal fun TmdbSettingsDialog(state: LauncherState) {
             }
         }
         if (state.tmdb.enabled) {
-            MenuButton(VeilIcons.Unpin, "Remove key", "Disable TMDB artwork on this device") {
+            MenuButton(VeilIcons.Unpin, "Remove Key", "Disable TMDB artwork on this device") {
                 state.saveTmdbKey("")
                 close()
             }
@@ -437,7 +440,7 @@ internal fun PlayerSettingsDialog(state: LauncherState) {
             permissionHint = true
         }
     }
-    SettingsDialog("Play shows with", state.toast, close) {
+    SettingsDialog("Play Shows with", state.toast, close) {
         LauncherState.Player.entries.forEach { player ->
             val installed = state.isInstalled(player)
             val selected = state.player == player
@@ -479,13 +482,13 @@ internal fun AmbientSettingsDialog(state: LauncherState) {
     val close = { closeSettingsPage(state, "ambient") }
     SettingsDialog("Veil Ambient", state.toast, close) {
         MenuButton(
-            icon = VeilIcons.Play, title = "Start now", subtitle = "Show Veil Ambient right away",
+            icon = VeilIcons.Play, title = "Start Now", subtitle = "Show Veil Ambient right away",
             modifier = Modifier.focusRequester(first),
             onClick = { close(); state.startAmbient() },
         )
         MenuButton(
             icon = VeilIcons.Sparkle,
-            title = "TV screensaver: " + if (state.screensaverIsVeil) "Veil Ambient" else "TV's own",
+            title = "TV Screensaver: " + if (state.screensaverIsVeil) "Veil Ambient" else "TV's own",
             subtitle = "Veil Ambient as the screensaver in any app. Off puts the TV's own screensaver back",
             onClick = state::toggleScreensaver,
         )
@@ -557,7 +560,7 @@ internal fun AmbientSettingsDialog(state: LauncherState) {
             }
             if (state.musicStyle == "viz" && state.visualizerAllowed) {
                 MenuButton(
-                    icon = VeilIcons.Wave, title = "Visualizer settings", subtitle = "Sensitivity, motion, trails… with live preview",
+                    icon = VeilIcons.Wave, title = "Visualizer Settings", subtitle = "Sensitivity, motion, trails… with live preview",
                     modifier = Modifier.focusRequester(vizButton),
                     onClick = { state.vizSettingsOpen = true },
                 )
@@ -764,7 +767,7 @@ fun WeatherPicker(state: LauncherState) {
                 .border(1.dp, Veil.Line, RoundedCornerShape(20.dp)).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Weather location", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Weather Location", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             Text("Now: ${state.weatherPlace ?: "not set"}", fontSize = 9.5.sp, color = Veil.Text.copy(alpha = 0.6f))
             Spacer(Modifier.height(2.dp))
             BasicTextField(
@@ -793,7 +796,7 @@ fun WeatherPicker(state: LauncherState) {
                 PickerRow(title = p.name, subtitle = p.region) { state.setWeatherPlace(p); close() }
             }
             if (state.weatherHasOverride && state.weatherDefault.isNotEmpty()) {
-                PickerRow(title = "Use default", subtitle = state.weatherDefault) { state.resetWeatherPlace(); close() }
+                PickerRow(title = "Use Default", subtitle = state.weatherDefault) { state.resetWeatherPlace(); close() }
             }
             Text("Back to cancel", fontSize = 8.5.sp, color = Veil.Text.copy(alpha = 0.45f))
         }

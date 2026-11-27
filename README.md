@@ -17,7 +17,7 @@ More in [`screenshots/`](screenshots).
 
 ### Install the customized APK
 
-[Download Veil.apk](https://github.com/dallasdondarrion/Veil/raw/refs/heads/customized/downloads/Veil.apk) and open it on your Android-based Fire TV. In Veil, open **Settings → TMDB API key**, enter your own key, and choose **Save**. The download contains no personal TMDB key.
+[Download Veil.apk](https://github.com/dallasdondarrion/Veil/raw/refs/heads/customized/downloads/Veil.apk) and open it on your Android-based Fire TV. In Veil, open **Appearance & Artwork → TMDB API Key**, enter your own key, and choose **Save**. The download contains no personal TMDB key.
 
 To rebuild the downloadable APK, run `./gradlew -PveilShareable assembleRelease` from the `source` directory. This skips the local `keys.properties` file.
 
