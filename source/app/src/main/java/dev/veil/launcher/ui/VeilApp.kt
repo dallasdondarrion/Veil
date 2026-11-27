@@ -155,11 +155,20 @@ private fun AppMenu(state: LauncherState, sheet: AppSheet) {
             if (i > 0) add(SheetAction("Move left", VeilIcons.Left) { state.move(app, -1) })
             if (i in 0 until pinned.lastIndex) add(SheetAction("Move right", VeilIcons.Right) { state.move(app, +1) })
             add(SheetAction("Unpin from Home", VeilIcons.Unpin) { state.unpin(app) })
+            add(SheetAction("App info", VeilIcons.Info) { state.openAppInfo(app) })
+            if (state.isHiddenFromAllApps(app)) {
+                add(SheetAction("Show in All Apps", VeilIcons.Grid) { state.showInAllApps(app) })
+            }
         } else {
             if (state.isPinned(app)) add(SheetAction("Unpin from Home", VeilIcons.Unpin) { state.unpin(app) })
             else add(SheetAction("Pin to Home", VeilIcons.Pin) { state.pin(app) })
             add(SheetAction("Open", VeilIcons.Play) { state.launch(app) })
             add(SheetAction("App info", VeilIcons.Info) { state.openAppInfo(app) })
+            if (state.isHiddenFromAllApps(app)) {
+                add(SheetAction("Show in All Apps", VeilIcons.Grid) { state.showInAllApps(app) })
+            } else {
+                add(SheetAction("Hide from All Apps", VeilIcons.Unpin) { state.hideFromAllApps(app) })
+            }
         }
     }
     ActionSheet(title = app.label, actions = actions, onDismiss = { state.sheet = null })

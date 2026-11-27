@@ -183,6 +183,28 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     val pinnedApps: List<AppEntry>
         get() = pins.mapNotNull { p -> apps.firstOrNull { it.pkg == p } }
 
+    private var hiddenAppPackages by mutableStateOf(
+        prefs.getStringSet("hidden_apps", emptySet())?.toSet() ?: emptySet(),
+    )
+    var revealHiddenApps by mutableStateOf(false)
+        private set
+    val drawerApps: List<AppEntry>
+        get() = if (revealHiddenApps) apps else apps.filterNot { it.pkg in hiddenAppPackages }
+
+    fun toggleRevealHiddenApps() { revealHiddenApps = !revealHiddenApps }
+
+    fun isHiddenFromAllApps(app: AppEntry) = app.pkg in hiddenAppPackages
+
+    fun hideFromAllApps(app: AppEntry) {
+        hiddenAppPackages = hiddenAppPackages + app.pkg
+        prefs.edit().putStringSet("hidden_apps", hiddenAppPackages).apply()
+    }
+
+    fun showInAllApps(app: AppEntry) {
+        hiddenAppPackages = hiddenAppPackages - app.pkg
+        prefs.edit().putStringSet("hidden_apps", hiddenAppPackages).apply()
+    }
+
     fun isPinned(app: AppEntry) = app.pkg in pins
 
     // ---- Pins ---------------------------------------------------------------------------------

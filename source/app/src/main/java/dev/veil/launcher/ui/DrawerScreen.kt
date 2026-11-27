@@ -65,6 +65,15 @@ fun DrawerScreen(state: LauncherState) {
             Text("All apps", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
             Spacer(Modifier.weight(1f))
             Pill(
+                onClick = state::toggleRevealHiddenApps,
+                padding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+            ) {
+                Text(
+                    if (state.revealHiddenApps) "Hide hidden apps" else "Show hidden apps",
+                    fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Pill(
                 onClick = { if (state.connected) state.disconnect() else state.startConnect() },
                 padding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
             ) {
@@ -82,7 +91,7 @@ fun DrawerScreen(state: LauncherState) {
             contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 40.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            itemsIndexed(state.apps, key = { _, a -> a.pkg }) { i, app ->
+            itemsIndexed(state.drawerApps, key = { _, a -> a.pkg }) { i, app ->
                 AppTile(
                     app = app,
                     pinned = state.isPinned(app),
