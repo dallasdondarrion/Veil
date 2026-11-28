@@ -268,6 +268,22 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
             )
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionLabel("APPEARANCE & ARTWORK")
+            MenuButton(
+                icon = VeilIcons.Sparkle, title = "Veil Ambient",
+                subtitle = "Screensaver, backgrounds & music mode",
+                modifier = Modifier.focusRequester(ambientButton),
+                onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
+            )
+            MenuButton(
+                icon = VeilIcons.Play, title = "TMDB API Key",
+                subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
+                modifier = Modifier.focusRequester(tmdbButton),
+                onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
+            )
+        }
+
         // Weather location
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("WEATHER")
@@ -295,22 +311,6 @@ private fun VeilPanel(state: LauncherState, firstItem: FocusRequester) {
                 title = "Seasonal Touches: " + if (state.seasonal) "on" else "off",
                 subtitle = "Snow in December, New Year countdown… in Ambient",
                 onClick = state::toggleSeasonal,
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("APPEARANCE & ARTWORK")
-            MenuButton(
-                icon = VeilIcons.Sparkle, title = "Veil Ambient",
-                subtitle = "Screensaver, backgrounds & music mode",
-                modifier = Modifier.focusRequester(ambientButton),
-                onClick = { state.settingsPage = LauncherState.SettingsPage.AMBIENT },
-            )
-            MenuButton(
-                icon = VeilIcons.Play, title = "TMDB API Key",
-                subtitle = if (state.tmdb.enabled) "Configured" else "Add a key for artwork",
-                modifier = Modifier.focusRequester(tmdbButton),
-                onClick = { state.settingsPage = LauncherState.SettingsPage.TMDB },
             )
         }
 
