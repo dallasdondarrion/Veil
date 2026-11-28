@@ -124,6 +124,7 @@ class HomeButtonService : AccessibilityService() {
                     val pkg = target.removePrefix("app:")
                     val launch = packageManager.getLeanbackLaunchIntentForPackage(pkg)
                         ?: packageManager.getLaunchIntentForPackage(pkg)
+                    dev.veil.launcher.data.RecentFilter.clearClosed(prefs, pkg)
                     launch?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let(::startActivity)
                 }
             } catch (_: Exception) { }
@@ -246,6 +247,7 @@ class HomeButtonService : AccessibilityService() {
     /** Ends the app's background processes (same method Horizon Home Kit uses); never touches Veil itself. */
     private fun closeApp(pkg: String) {
         if (pkg == packageName) return
+        dev.veil.launcher.data.RecentFilter.markClosed(getSharedPreferences("veil", MODE_PRIVATE), pkg)
         runCatching {
             (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
         }
@@ -259,6 +261,9 @@ class HomeButtonService : AccessibilityService() {
 
     private fun launchRecentApp(intent: Intent) {
         dismissRecentAppsOverlay()
+        (intent.component?.packageName ?: intent.`package`)?.let {
+            dev.veil.launcher.data.RecentFilter.clearClosed(getSharedPreferences("veil", MODE_PRIVATE), it)
+        }
         try { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
     }
 
@@ -295,7 +300,8 @@ class HomeButtonService : AccessibilityService() {
         if (!transient) {
             sawWindow = true
             stockHomeInFront = stockHome
-            if (pkg != packageName && !stockHome && dev.veil.launcher.data.RecentFilter.allowed(this, pkg)) {
+            if (pkg != packageName && !stockHome && dev.veil.launcher.data.RecentFilter.allowed(this, pkg) &&
+                !dev.veil.launcher.data.RecentFilter.isClosed(getSharedPreferences("veil", MODE_PRIVATE), pkg)) {
                 val prefs = getSharedPreferences("veil", MODE_PRIVATE)
                 val recent = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() }
                 prefs.edit().putString("recent_app_packages", (listOf(pkg) + recent.filterNot { it == pkg }).take(12).joinToString("|")).apply()

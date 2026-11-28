@@ -22,4 +22,22 @@ object RecentFilter {
         val p = pkg.lowercase()
         return blockedParts.none { p.contains(it) }
     }
+
+    // Apps closed with Down stay "closed" until you open them again on purpose (Veil, a mapped button or the
+    // recents popup). Closing kills the process but not its Android task, so backing out of another app
+    // can bring the closed app's window up again; that must not put it back in the list.
+    private const val CLOSED_KEY = "closed_apps"
+
+    private fun closed(prefs: android.content.SharedPreferences) =
+        prefs.getString(CLOSED_KEY, "").orEmpty().split('|').filter { it.isNotBlank() }
+
+    fun isClosed(prefs: android.content.SharedPreferences, pkg: String) = pkg in closed(prefs)
+
+    fun markClosed(prefs: android.content.SharedPreferences, pkg: String) {
+        prefs.edit().putString(CLOSED_KEY, (closed(prefs).filterNot { it == pkg } + pkg).takeLast(30).joinToString("|")).apply()
+    }
+
+    fun clearClosed(prefs: android.content.SharedPreferences, pkg: String) {
+        if (isClosed(prefs, pkg)) prefs.edit().putString(CLOSED_KEY, closed(prefs).filterNot { it == pkg }.joinToString("|")).apply()
+    }
 }

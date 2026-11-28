@@ -278,7 +278,10 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     private fun saveRecentAppPackage(pkg: String) {
         if (pkg == context.packageName || !dev.veil.launcher.data.RecentFilter.allowed(context, pkg)) return
-        recentAppPackages = (listOf(pkg) + recentAppPackages.filterNot { it == pkg }).take(12)
+        // The Home helper edits the saved list too (Down-to-close, window events), so start from what's saved,
+        // not from this screen's possibly stale copy, or closed apps get written back.
+        val saved = loadRecentAppPackages()
+        recentAppPackages = (listOf(pkg) + saved.filterNot { it == pkg }).take(12)
         prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
     }
 
@@ -382,6 +385,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
         if (pkg != context.packageName) runCatching {
             (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
         }
+        dev.veil.launcher.data.RecentFilter.markClosed(prefs, pkg)
         recentAppPackages = recentAppPackages.filterNot { it == pkg }
         prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
     }
@@ -454,7 +458,16 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
                     val enriched = NuvioWatchNext.enrich(loaded.items, tmdb)
 
-                    loaded.copy(items = enriched)
+                    // These apps only publish what you've actually played, so add the not-yet-started
+                    // "next up" episodes from the connected tracker (Simkl/Trakt) after them.
+                    val extra = if (selected.mergesTracker && tracker.isConnected) {
+                        val seen = enriched.map { it.title.trim().lowercase() }.toSet()
+                        runCatching { ContinueWatching.withArt(tracker.continueWatching(force), tmdb) }
+                            .getOrDefault(emptyList())
+                            .filter { it.title.trim().lowercase() !in seen }
+                    } else emptyList()
+
+                    loaded.copy(items = (enriched + extra).take(12))
                 }
 
                 if (request != watchRequest || player != selected) return@launch
@@ -1078,6 +1091,10 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
         NUVIO_LEGACY("nuvio_legacy", "Nuvio Legacy", listOf(NUVIO_LEGACY_PKG), false),
         NUVIO_MAIN("nuvio_main", "Nuvio", listOf("com.nuvio.tv", "com.nuvio.app"), true),
         NUVIO_ARC("nuvio_arc", "Nuvio Arc", listOf("com.nuvio.tv.test"), true),
+        ;
+
+        /** Apps that don't publish unstarted next-up episodes, so Veil fills those in from the tracker. */
+        val mergesTracker: Boolean get() = this == NUVIO_ARC || this == NUVIO_MAIN
     }
 
     // The old "nuvio" preference intentionally maps to Nuvio + IPTV for existing installs.
@@ -1169,6 +1186,7 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     }
 
     private fun start(intent: Intent): Boolean = try {
+        (intent.component?.packageName ?: intent.`package`)?.let { dev.veil.launcher.data.RecentFilter.clearClosed(prefs, it) }
         context.startActivity(intent); true
     } catch (e: ActivityNotFoundException) {
         false
