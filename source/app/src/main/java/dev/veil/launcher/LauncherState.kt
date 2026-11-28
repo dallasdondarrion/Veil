@@ -274,10 +274,10 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
 
     private var lastAppsLoad = 0L
     private fun loadRecentAppPackages(): List<String> = prefs.getString("recent_app_packages", "").orEmpty()
-        .split('|').filter { it.isNotBlank() }.distinct().take(12)
+        .split('|').filter { it.isNotBlank() && dev.veil.launcher.data.RecentFilter.allowed(context, it) }.distinct().take(12)
 
     private fun saveRecentAppPackage(pkg: String) {
-        if (pkg == context.packageName) return
+        if (pkg == context.packageName || !dev.veil.launcher.data.RecentFilter.allowed(context, pkg)) return
         recentAppPackages = (listOf(pkg) + recentAppPackages.filterNot { it == pkg }).take(12)
         prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
     }
@@ -379,6 +379,9 @@ class LauncherState(private val context: Context, private val scope: CoroutineSc
     }
 
     fun dismissRecentApp(pkg: String) {
+        if (pkg != context.packageName) runCatching {
+            (context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
+        }
         recentAppPackages = recentAppPackages.filterNot { it == pkg }
         prefs.edit().putString("recent_app_packages", recentAppPackages.joinToString("|")).apply()
     }

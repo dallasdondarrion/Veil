@@ -136,7 +136,7 @@ class HomeButtonService : AccessibilityService() {
     private fun showRecentAppsOverlay() {
         dismissRecentAppsOverlay()
         val prefs = getSharedPreferences("veil", MODE_PRIVATE)
-        val packages = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() }.distinct()
+        val packages = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() && dev.veil.launcher.data.RecentFilter.allowed(this, it) }.distinct()
         val entries = packages.mapNotNull { pkg ->
             val intent = packageManager.getLeanbackLaunchIntentForPackage(pkg)
                 ?: packageManager.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
@@ -224,8 +224,13 @@ class HomeButtonService : AccessibilityService() {
                 if (pkg != null && intent != null) launchRecentApp(intent) else dismissRecentAppsOverlay()
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> if (event.repeatCount == 0) {
-                recentOverlayPackages.getOrNull(recentOverlaySelected)?.let(::removeFromRecentList)
+                val keep = recentOverlaySelected
+                recentOverlayPackages.getOrNull(keep)?.let { closeApp(it); removeFromRecentList(it) }
                 showRecentAppsOverlay()
+                if (recentOverlayPackages.isNotEmpty()) {
+                    recentOverlaySelected = keep.coerceAtMost(recentOverlayPackages.size - 1)
+                    recentOverlayTiles.forEachIndexed { i, t -> t.background = tileBackground(i == recentOverlaySelected) }
+                }
             }
             else -> return false
         }
@@ -236,6 +241,14 @@ class HomeButtonService : AccessibilityService() {
         if (recentOverlayPackages.isEmpty()) return
         recentOverlaySelected = (recentOverlaySelected + delta).mod(recentOverlayPackages.size)
         recentOverlayTiles.forEachIndexed { index, tile -> tile.background = tileBackground(index == recentOverlaySelected) }
+    }
+
+    /** Ends the app's background processes (same method Horizon Home Kit uses); never touches Veil itself. */
+    private fun closeApp(pkg: String) {
+        if (pkg == packageName) return
+        runCatching {
+            (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
+        }
     }
 
     private fun removeFromRecentList(pkg: String) {
@@ -282,7 +295,7 @@ class HomeButtonService : AccessibilityService() {
         if (!transient) {
             sawWindow = true
             stockHomeInFront = stockHome
-            if (pkg != packageName && !stockHome) {
+            if (pkg != packageName && !stockHome && dev.veil.launcher.data.RecentFilter.allowed(this, pkg)) {
                 val prefs = getSharedPreferences("veil", MODE_PRIVATE)
                 val recent = prefs.getString("recent_app_packages", "").orEmpty().split('|').filter { it.isNotBlank() }
                 prefs.edit().putString("recent_app_packages", (listOf(pkg) + recent.filterNot { it == pkg }).take(12).joinToString("|")).apply()

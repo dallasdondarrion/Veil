@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Visualizer: reads the TV's audio OUTPUT levels (no microphone, nothing recorded). Granted over ADB. -->
